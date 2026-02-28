@@ -1,53 +1,77 @@
 <template>
   <div class="space-y-4">
-    <ResearchSaleToggle 
-      :is-active="isResearchSaleActive" 
+    <ResearchSaleToggle
+      :is-active="isResearchSaleActive"
       :is-disabled="isInsideResearchEventWindow"
-      @toggle="handleToggleSale" 
+      @toggle="handleToggleSale"
     />
 
-    <SmartBuy 
+    <SmartBuy
       v-model:always-on="smartBuyState.alwaysOn"
-      @buy="handleSmartBuy" 
-      @update="state => smartBuyState = state" 
+      @buy="handleSmartBuy"
+      @update="state => (smartBuyState = state)"
     />
 
-    <ResearchViewSelector 
-      v-model="currentView" 
-      :views="VIEWS" 
-    />
+    <ResearchViewSelector v-model="currentView" :views="VIEWS" />
 
     <p class="text-sm text-gray-500 mb-4 px-1">
       {{ viewDescription }}
     </p>
 
     <!-- Sale Lookahead -->
-    <div v-if="timeUntilNextSale !== null && !isResearchSaleActive" class="px-5 py-4 bg-purple-50 rounded-2xl border border-purple-100 flex items-center justify-between mb-2">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-white border border-purple-200 shadow-sm flex items-center justify-center p-2">
-                <img :src="iconURL('egginc/icon_sale.png', 64)" class="w-full h-full object-contain" />
-            </div>
-            <div>
-                <p class="text-[10px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">Next Research Sale</p>
-                <p class="text-sm font-black text-purple-900 leading-none">In {{ formatDuration(timeUntilNextSale) }}</p>
-            </div>
+    <div
+      v-if="timeUntilNextSale !== null && !isResearchSaleActive"
+      class="px-5 py-4 bg-purple-50 rounded-2xl border border-purple-100 flex items-center justify-between mb-2"
+    >
+      <div class="flex items-center gap-3">
+        <div
+          class="w-10 h-10 rounded-xl bg-white border border-purple-200 shadow-sm flex items-center justify-center p-2"
+        >
+          <img :src="iconURL('egginc/icon_sale.png', 64)" class="w-full h-full object-contain" />
         </div>
-        <button v-if="timeUntilNextSale > 0" @click="actionsStore.pushWaitForResearchSale()" class="text-[10px] font-black text-purple-600 uppercase tracking-widest hover:text-purple-800 transition-colors bg-purple-100/50 px-3 py-2 rounded-lg">
-            Wait for Sale
-        </button>
+        <div>
+          <p class="text-[10px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">
+            Next Research Sale
+          </p>
+          <p class="text-sm font-black text-purple-900 leading-none">In {{ formatDuration(timeUntilNextSale) }}</p>
+        </div>
+      </div>
+      <button
+        v-if="timeUntilNextSale > 0"
+        @click="actionsStore.pushWaitForResearchSale()"
+        class="text-[10px] font-black text-purple-600 uppercase tracking-widest hover:text-purple-800 transition-colors bg-purple-100/50 px-3 py-2 rounded-lg"
+      >
+        Wait for Sale
+      </button>
     </div>
 
     <!-- ROI Alert (Only if sale is starting soon) -->
-    <div v-if="showROIAlert" class="px-5 py-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
-        <div class="w-10 h-10 rounded-xl bg-white border border-amber-200 shadow-sm flex items-center justify-center p-2 text-amber-500 scale-110">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-        </div>
-        <div>
-            <p class="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1.5">Efficiency Alert</p>
-            <p class="text-[11px] font-bold text-amber-900 leading-relaxed">A research sale starts in <span class="text-amber-600">{{ timeUntilNextSale !== null ? formatDuration(timeUntilNextSale) : '' }}</span>. Purchasing now might be inefficient.</p>
-        </div>
+    <div
+      v-if="showROIAlert"
+      class="px-5 py-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4 duration-500"
+    >
+      <div
+        class="w-10 h-10 rounded-xl bg-white border border-amber-200 shadow-sm flex items-center justify-center p-2 text-amber-500 scale-110"
+      >
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+      </div>
+      <div>
+        <p class="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1.5">
+          Efficiency Alert
+        </p>
+        <p class="text-[11px] font-bold text-amber-900 leading-relaxed">
+          A research sale starts in
+          <span class="text-amber-600">{{ timeUntilNextSale !== null ? formatDuration(timeUntilNextSale) : '' }}</span
+          >. Purchasing now might be inefficient.
+        </p>
+      </div>
     </div>
 
     <!-- Game View (Grouped by Tier) -->
@@ -123,17 +147,17 @@ const isInsideResearchEventWindow = computed(() => {
 });
 
 const timeUntilNextSale = computed(() => {
-    const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime;
-    const info = getEventInfo(currentSimTime);
-    if (info.isResearchSaleActive) return null;
-    return info.nextResearchSaleStartTime - currentSimTime;
+  const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime;
+  const info = getEventInfo(currentSimTime);
+  if (info.isResearchSaleActive) return null;
+  return info.nextResearchSaleStartTime - currentSimTime;
 });
 
 const showROIAlert = computed(() => {
-    if (isResearchSaleActive.value) return false;
-    if (timeUntilNextSale.value === null) return false;
-    // Show alert if sale is within 24 hours
-    return timeUntilNextSale.value < 24 * 3600;
+  if (isResearchSaleActive.value) return false;
+  if (timeUntilNextSale.value === null) return false;
+  // Show alert if sale is within 24 hours
+  return timeUntilNextSale.value < 24 * 3600;
 });
 
 const {
@@ -192,20 +216,28 @@ function buyOneLevel(research: CommonResearch): boolean {
   };
 
   // Compute dependencies (level N depends on the action that bought level N-1)
-  const dependencies = computeDependencies('buy_research', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels);
+  const dependencies = computeDependencies(
+    'buy_research',
+    payload,
+    actionsStore.actionsBeforeInsertion,
+    actionsStore.initialSnapshot.researchLevels
+  );
 
   // Apply to store
   commonResearchStore.setResearchLevel(research.id, effectiveLevel + 1);
 
   // Complete execution (computes snapshot, inserts/pushes action, replays if needed)
-  completeExecution({
-    id: generateActionId(),
-    timestamp: Date.now(),
-    type: 'buy_research',
-    payload,
-    cost,
-    dependsOn: dependencies,
-  }, beforeSnapshot);
+  completeExecution(
+    {
+      id: generateActionId(),
+      timestamp: Date.now(),
+      type: 'buy_research',
+      payload,
+      cost,
+      dependsOn: dependencies,
+    },
+    beforeSnapshot
+  );
 
   // Trigger automated sweep if Always On is enabled
   if (!isSmartBuying && smartBuyState.value.alwaysOn) {
@@ -216,11 +248,14 @@ function buyOneLevel(research: CommonResearch): boolean {
 }
 
 // Automatically sweep when Always On is toggled on
-watch(() => smartBuyState.value.alwaysOn, (newVal) => {
-  if (newVal && !isSmartBuying) {
-    handleSmartBuy(smartBuyState.value.threshold);
+watch(
+  () => smartBuyState.value.alwaysOn,
+  newVal => {
+    if (newVal && !isSmartBuying) {
+      handleSmartBuy(smartBuyState.value.threshold);
+    }
   }
-});
+);
 
 function handleBuyResearch(research: CommonResearch) {
   buyOneLevel(research);
@@ -232,12 +267,12 @@ function handleSmartBuy(threshold: number) {
 
   batch(() => {
     try {
-        let itemBought = true;
-        // Limit iterations to prevent infinite loops in edge cases
-        let iterations = 0;
-        const maxIterations = 2500;
+      let itemBought = true;
+      // Limit iterations to prevent infinite loops in edge cases
+      let iterations = 0;
+      const maxIterations = 2500;
 
-        while (itemBought && iterations < maxIterations) {
+      while (itemBought && iterations < maxIterations) {
         itemBought = false;
         iterations++;
 
@@ -252,18 +287,20 @@ function handleSmartBuy(threshold: number) {
 
         // Filter for unpurchased and unlocked
         // We only care about the very next level of each research
-        const candidates = all.filter(r => {
-        const level = levels[r.id] || 0;
-        return level < r.levels && isTierUnlocked(levels, r.tier);
-        }).map(r => {
-        const level = levels[r.id] || 0;
-        const price = getDiscountedVirtuePrice(r, level, mods, isSale);
-        return {
-            research: r,
-            price,
-            seconds: getTimeToSave(price, snapshot)
-        };
-        });
+        const candidates = all
+          .filter(r => {
+            const level = levels[r.id] || 0;
+            return level < r.levels && isTierUnlocked(levels, r.tier);
+          })
+          .map(r => {
+            const level = levels[r.id] || 0;
+            const price = getDiscountedVirtuePrice(r, level, mods, isSale);
+            return {
+              research: r,
+              price,
+              seconds: getTimeToSave(price, snapshot),
+            };
+          });
 
         // Sort by price (Cheapest First order)
         candidates.sort((a, b) => a.price - b.price);
@@ -271,13 +308,13 @@ function handleSmartBuy(threshold: number) {
         // Find the first one below threshold
         const found = candidates.find(c => c.seconds <= threshold);
         if (found) {
-            if (buyOneLevel(found.research)) {
-                itemBought = true;
-            }
+          if (buyOneLevel(found.research)) {
+            itemBought = true;
+          }
         }
-        }
+      }
     } finally {
-        isSmartBuying = false;
+      isSmartBuying = false;
     }
   });
 }
@@ -286,7 +323,7 @@ function handleMaxResearch(research: CommonResearch) {
   batch(() => {
     const maxLevel = research.levels;
     while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
-        if (!buyOneLevel(research)) break;
+      if (!buyOneLevel(research)) break;
     }
   });
 }
@@ -295,10 +332,10 @@ function handleMaxTier(tier: number) {
   batch(() => {
     const researches = researchByTier.value.get(tier) || [];
     for (const research of researches) {
-        const maxLevel = research.levels;
-        while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
+      const maxLevel = research.levels;
+      while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
         if (!buyOneLevel(research)) break;
-        }
+      }
     }
   });
 }
@@ -309,8 +346,8 @@ function handleBuyToHere(index: number) {
     if (index < 0 || index >= list.length) return;
 
     for (let i = 0; i <= index; i++) {
-        const item = list[i];
-        buyOneLevel(item.research);
+      const item = list[i];
+      buyOneLevel(item.research);
     }
   });
 }
@@ -331,13 +368,21 @@ function handleToggleSale() {
   // Deactivate Smart Buy Always On whenever a sale is toggled
   smartBuyState.value.alwaysOn = false;
 
-  completeExecution({
-    id: generateActionId(),
-    timestamp: Date.now(),
-    type: 'toggle_sale',
-    payload,
-    cost: 0,
-    dependsOn: computeDependencies('toggle_sale', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
-  }, beforeSnapshot);
+  completeExecution(
+    {
+      id: generateActionId(),
+      timestamp: Date.now(),
+      type: 'toggle_sale',
+      payload,
+      cost: 0,
+      dependsOn: computeDependencies(
+        'toggle_sale',
+        payload,
+        actionsStore.actionsBeforeInsertion,
+        actionsStore.initialSnapshot.researchLevels
+      ),
+    },
+    beforeSnapshot
+  );
 }
 </script>
