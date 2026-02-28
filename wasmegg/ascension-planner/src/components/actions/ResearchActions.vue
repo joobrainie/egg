@@ -2,6 +2,7 @@
   <div class="space-y-4">
     <ResearchSaleToggle 
       :is-active="isResearchSaleActive" 
+      :is-disabled="isInsideResearchEventWindow"
       @toggle="handleToggleSale" 
     />
 
@@ -83,6 +84,15 @@ const { prepareExecution, completeExecution, batch } = useActionExecutor();
 
 const smartBuyState = ref({ threshold: 0, alwaysOn: false });
 let isSmartBuying = false;
+
+import { computed } from 'vue';
+import { getEventInfo } from '@/lib/time';
+
+const isInsideResearchEventWindow = computed(() => {
+  const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime || Math.floor(Date.now() / 1000);
+  const info = getEventInfo(currentSimTime);
+  return info.isResearchSaleActive;
+});
 
 const {
   currentView,

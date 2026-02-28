@@ -1,8 +1,10 @@
 import type { Action, CalculationsSnapshot } from '@/types';
+import { generateActionId } from '@/types';
 import type { EngineState, SimulationContext, SimulationResult } from './types';
 import { applyAction, computePassiveEggsDelivered, applyPassiveEggs, applyTime, getActionDuration, refreshActionPayload } from './apply';
 import { computeSnapshot } from './compute';
 import { computeDeltas } from '@/lib/actions/snapshot';
+import { getEventInfo } from '@/lib/time';
 
 /**
  * Simulate a list of actions to produce a timeline of states.
@@ -27,18 +29,17 @@ export function simulate(
 ): Action[] {
     const results: Action[] = [];
     let previousSnapshot: CalculationsSnapshot | null = null;
-
-    // We need a way to treat baseState as a Snapshot for delta computation of the first action.
-    // However, computeDeltas expects a full CalculationsSnapshot.
-    // We can compute the "base snapshot" once.
     const baseSnapshot = computeSnapshot(baseState, context);
 
     let currentState = baseState;
     let currentSnapshot = baseSnapshot;
 
-    for (let i = 0; i < actions.length; i++) {
-        let action = actions[i];
-        const actualIndex = startIndex + i;
+    // We process actions from a queue so we can inject items dynamically
+    let pendingActions = [...actions];
+    let actualIndex = startIndex;
+
+    while (pendingActions.length > 0) {
+        let action = pendingActions.shift()!;
 
         // 0. Refresh dynamic payloads (e.g. wait_for_te duration based on new ELR)
         action = refreshActionPayload(action, currentSnapshot, context);
@@ -61,36 +62,74 @@ export function simulate(
         // For the first action, we compare against baseSnapshot (or should we?)
         // In the current store, start_ascension has 0 deltas usually.
         // computeDeltas(baseSnapshot, newSnapshot) might show diffs if start_ascension changed the egg.
-        const prevSnap = i === 0 ? baseSnapshot : previousSnapshot!;
+        const prevSnap = results.length === 0 ? baseSnapshot : previousSnapshot!;
 
         // 3. Compute deltas vs previous state
         const deltas = computeDeltas(prevSnap, newSnapshot);
 
         // 4. Update action with new results and correct index
-        results.push({
+        const finalAction = {
             ...action,
             index: actualIndex,
             ...deltas,
             totalTimeSeconds: durationSeconds,
             endState: newSnapshot, // Caller should markRaw this if using Vue
-        });
+        };
+        results.push(finalAction);
 
         // 5. Update currentState for the next iteration.
-        // This is CRITICAL: simulation must propagate the computed state 
-        // (population, egg delivery, etc.) to the next action or else 
-        // subsequent actions will start from stale states.
         currentState = {
             ...currentState,
             population: newSnapshot.population,
             bankValue: newSnapshot.bankValue,
             lastStepTime: newSnapshot.lastStepTime,
-            // Also ensure cumulative lifecycle eggs/fuel are preserved from computeSnapshot if they changed
             eggsDelivered: { ...newSnapshot.eggsDelivered },
             fuelTankAmounts: { ...newSnapshot.fuelTankAmounts },
         };
 
         previousSnapshot = newSnapshot;
         currentSnapshot = newSnapshot;
+
+        // 6. Injection Logic for Initial State (start_ascension)
+        if (action.type === 'start_ascension') {
+            const info = getEventInfo(newSnapshot.lastStepTime);
+            // We want to inject the Toggle actions if the event is active
+            // but only if the very next action in `pendingActions` isn't already the exact toggle.
+            if (info.isEarningsBoostActive) {
+                const nextType = pendingActions.length > 0 ? pendingActions[0].type : null;
+                if (nextType !== 'toggle_earnings_boost') {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: true, multiplier: 2, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                    } as unknown as Action);
+                }
+            }
+            if (info.isResearchSaleActive && currentState.currentEgg === 'curiosity') {
+                // Must ensure we don't accidentally check the second item if earnings boost got inserted first
+                // Wait, if both are inserted, earnings boost will be checked first, inserted, then research sale checks pending[0]. But checking pendingActions.find handles this cleanly
+                const hasSale = pendingActions.some(a => a.type === 'toggle_sale');
+                if (!hasSale) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: true, multiplier: 0.3 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                    } as unknown as Action);
+                }
+            }
+        }
+
+        actualIndex++;
     }
 
     return results;
@@ -117,15 +156,18 @@ export async function simulateAsync(
     // A smaller number makes the UI smoother but total time slightly longer
     const YIELD_INTERVAL = 20;
 
-    for (let i = 0; i < actions.length; i++) {
+    let pendingActions = [...actions];
+    let actualIndex = startIndex;
+    let iterationCount = 0;
+
+    while (pendingActions.length > 0) {
         // Yield check
-        if (i % YIELD_INTERVAL === 0) {
-            if (onProgress) onProgress(i, actions.length);
+        if (iterationCount % YIELD_INTERVAL === 0) {
+            if (onProgress) onProgress(iterationCount, actions.length);
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
-        let action = actions[i];
-        const actualIndex = startIndex + i;
+        let action = pendingActions.shift()!;
 
         action = refreshActionPayload(action, currentSnapshot, context);
         currentState = applyAction(currentState, action);
@@ -136,15 +178,17 @@ export async function simulateAsync(
         currentState = applyTime(currentState, durationSeconds, currentSnapshot);
 
         const newSnapshot = computeSnapshot(currentState, context);
-        const prevSnap = i === 0 ? baseSnapshot : previousSnapshot!;
+        const prevSnap = results.length === 0 ? baseSnapshot : previousSnapshot!;
         const deltas = computeDeltas(prevSnap, newSnapshot);
-        results.push({
+        const finalAction = {
             ...action,
             index: actualIndex,
             ...deltas,
             totalTimeSeconds: durationSeconds,
             endState: newSnapshot,
-        });
+        };
+        results.push(finalAction);
+
         currentState = {
             ...currentState,
             population: newSnapshot.population,
@@ -153,8 +197,46 @@ export async function simulateAsync(
             eggsDelivered: { ...newSnapshot.eggsDelivered },
             fuelTankAmounts: { ...newSnapshot.fuelTankAmounts },
         };
+
         previousSnapshot = newSnapshot;
         currentSnapshot = newSnapshot;
+
+        if (action.type === 'start_ascension') {
+            const info = getEventInfo(newSnapshot.lastStepTime);
+            if (info.isEarningsBoostActive) {
+                const nextType = pendingActions.length > 0 ? pendingActions[0].type : null;
+                if (nextType !== 'toggle_earnings_boost') {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: true, multiplier: 2, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                    } as unknown as Action);
+                }
+            }
+            if (info.isResearchSaleActive && currentState.currentEgg === 'curiosity') {
+                const hasSale = pendingActions.some(a => a.type === 'toggle_sale');
+                if (!hasSale) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: true, multiplier: 0.3 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                    } as unknown as Action);
+                }
+            }
+        }
+
+        actualIndex++;
+        iterationCount++;
     }
 
     // Final progress update

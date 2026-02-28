@@ -42,8 +42,12 @@
 
           <button
             @click="handleToggleEarningsEvent"
+            :disabled="isInsideEarningsEventWindow"
             class="relative inline-flex h-5 w-10 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner"
-            :class="isEarningsBoostActive ? 'bg-orange-500' : 'bg-slate-200'"
+            :class="[
+              isEarningsBoostActive ? 'bg-orange-500' : 'bg-slate-200',
+              isInsideEarningsEventWindow ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
           >
             <span
               class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all duration-300 shadow-sm"
@@ -197,6 +201,14 @@ const salesStore = useSalesStore();
 const { prepareExecution, completeExecution } = useActionExecutor();
 
 const isEarningsBoostActive = computed(() => actionsStore.effectiveSnapshot.earningsBoost.active);
+
+import { getEventInfo } from '@/lib/time';
+
+const isInsideEarningsEventWindow = computed(() => {
+  const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime || Math.floor(Date.now() / 1000);
+  const info = getEventInfo(currentSimTime);
+  return info.isEarningsBoostActive;
+});
 
 const pageTitle = computed(() => {
   const name = initialStateStore.nickname;
