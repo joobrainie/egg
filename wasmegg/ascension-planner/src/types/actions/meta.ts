@@ -25,6 +25,7 @@ export interface BaseAction {
     ihrDelta: number;
     bankDelta: number;
     populationDelta: number;
+    startState: CalculationsSnapshot;
     endState: CalculationsSnapshot;
     totalTimeSeconds: number;
     dependsOn: string[];

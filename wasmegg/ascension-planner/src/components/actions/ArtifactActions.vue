@@ -220,6 +220,7 @@ function saveChanges() {
     },
     cost: 0,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 }
 
@@ -246,6 +247,7 @@ function equipSet() {
     },
     cost: 0,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 }
 </script>

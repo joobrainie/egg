@@ -43,7 +43,7 @@
       </div>
       <div 
         class="text-xs font-mono text-gray-900"
-        v-tippy="extraLabel === 'Achieve ROI' && extraSeconds !== undefined ? formatAbsoluteTime(extraSeconds, baseTimestamp) : undefined"
+        v-tippy="extraLabel === 'Achieve ROI' && extraSeconds !== undefined ? formatAbsoluteTime(extraSeconds, baseTimestamp, virtueStore.ascensionTimezone) : undefined"
       >
         {{ extraStats }}
       </div>
@@ -52,16 +52,38 @@
       </div>
     </div>
 
+    <!-- ROI Warning Icon -->
+    <div v-if="showROIWarning" class="group relative">
+        <span 
+            class="text-amber-500 cursor-help transform hover:scale-110 transition-transform"
+            v-tippy="'Buying this now is inefficient. It would be better to wait until the research sale to purchase this, as you won\'t earn back the 70% savings before the sale starts.'"
+        >
+            ⚠️
+        </span>
+    </div>
+
     <!-- Next level price -->
     <div class="text-right w-24">
       <template v-if="!isMaxed">
         <div class="text-xs text-amber-600 font-mono">
-          <div class="flex items-center justify-end gap-1">
+          <!-- Sale Badge -->
+          <div v-if="isSalePredicted" class="flex justify-end mb-0.5">
+              <span class="bg-indigo-500 text-white text-[8px] px-1 rounded-sm font-black tracking-tighter shadow-sm animate-pulse-slow">70% OFF</span>
+          </div>
+          <div class="flex items-center justify-end gap-1" :class="{'text-indigo-600 font-bold': isSalePredicted}">
             {{ formatGemPrice(price) }}
             <img :src="iconURL('egginc/icon_virtue_gem.png', 64)" class="w-3 h-3 object-contain" alt="Gem" />
           </div>
-          <div v-if="timeToBuy" class="text-[10px] text-gray-400 mt-0.5">
+          <div v-if="timeToBuy" class="text-[10px] text-gray-400 mt-0.5 flex items-center justify-end gap-0.5">
             {{ timeToBuy }}
+            <!-- Boosted Indicator -->
+            <span 
+                v-if="isBoosted" 
+                class="text-indigo-500 text-[10px]"
+                v-tippy="'Time to save is decreased because of the 2x earnings event.'"
+            >
+                ⚡
+            </span>
           </div>
         </div>
       </template>
@@ -77,7 +99,7 @@
         v-if="showBuyToHere && !isMaxed"
         class="btn-premium btn-secondary text-[10px] py-1 px-2"
         :disabled="!canBuyToHere"
-        v-tippy="`${buyToHereSeconds !== undefined ? formatAbsoluteTime(buyToHereSeconds, baseTimestamp) : ''}`"
+        v-tippy="`${buyToHereSeconds !== undefined ? formatAbsoluteTime(buyToHereSeconds, baseTimestamp, virtueStore.ascensionTimezone) : ''}`"
         @click.stop="$emit('buyToHere')"
       >
         Buy to here
@@ -88,7 +110,7 @@
       <button
         class="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         :disabled="!canBuy || isMaxed || (targetLevel !== undefined && targetLevel !== currentLevel + 1)"
-        v-tippy="timeToBuySeconds !== undefined ? formatAbsoluteTime(timeToBuySeconds, baseTimestamp) : ''"
+        v-tippy="timeToBuySeconds !== undefined ? formatAbsoluteTime(timeToBuySeconds, baseTimestamp, virtueStore.ascensionTimezone) : ''"
         @click.stop="$emit('buy')"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,7 +124,7 @@
         v-if="showMax"
         class="btn-premium btn-secondary text-xs py-1 px-2"
         :disabled="!canBuy || isMaxed"
-        v-tippy="maxTimeSeconds !== undefined ? formatAbsoluteTime(maxTimeSeconds, baseTimestamp) : ''"
+        v-tippy="maxTimeSeconds !== undefined ? formatAbsoluteTime(maxTimeSeconds, baseTimestamp, virtueStore.ascensionTimezone) : ''"
         @click.stop="$emit('max')"
       >
         Max
@@ -138,11 +160,15 @@ const props = defineProps<{
   canBuyToHere?: boolean;
   buyToHereTime?: string;
   recommendationNote?: string;
+  buyToHereSeconds?: number;
+  maxTimeSeconds?: number;
   maxTime?: string;
   timeToBuySeconds?: number;
-  maxTimeSeconds?: number;
-  buyToHereSeconds?: number;
+  maxTimeSecondsProp?: number; // Renamed to avoid collision if necessary, but actually let's just keep the original names
   extraSeconds?: number;
+  isSalePredicted?: boolean;
+  isBoosted?: boolean;
+  showROIWarning?: boolean;
 }>();
 
 const actionsStore = useActionsStore();

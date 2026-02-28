@@ -27,6 +27,11 @@ import { useCommonResearchStore } from '@/stores/commonResearch';
 import { useHabCapacityStore } from '@/stores/habCapacity';
 import { useShippingCapacityStore } from '@/stores/shippingCapacity';
 import { useEventsStore } from '@/stores/events';
+import {
+    getNextEventBoundary,
+    isResearchSaleActiveAt,
+    isEarningsEventActiveAt
+} from '@/lib/time';
 
 import { simulateAsync } from '@/engine/simulate';
 import {
@@ -204,7 +209,7 @@ export const useActionsStore = defineStore('actions', {
                 endState: markRaw(newSnapshot),
             };
 
-            for (const depId of action.dependsOn) {
+            for (const depId of (action.dependsOn || [])) {
                 const depAction = this.actions.find(a => a.id === depId);
                 if (depAction) depAction.dependents.push(finalAction.id);
             }
@@ -387,7 +392,7 @@ export const useActionsStore = defineStore('actions', {
                 endState: createEmptySnapshot(),
             } as Action;
 
-            for (const depId of action.dependsOn) {
+            for (const depId of (action.dependsOn || [])) {
                 const depAction = this.actions.find(a => a.id === depId);
                 if (depAction) depAction.dependents.push(fullAction.id);
             }
@@ -438,10 +443,18 @@ export const useActionsStore = defineStore('actions', {
                 let baseState = startIndex === 0 ? createBaseEngineState(this._initialSnapshot) : this.actions[startIndex - 1].endState;
                 const actionsToSimulate = this.actions.slice(startIndex);
                 this.recalculationProgress = { current: 0, total: actionsToSimulate.length };
-                const newActionsSegment = await simulateAsync(actionsToSimulate, context, baseState, (current, total) => {
+
+                // 1. Clean up FUTURE system actions to allow simulator to re-insert them correctly at absolute times
+                const futureUserActions = this.actions.slice(startIndex).filter(a => !(a.payload as any).systemManaged);
+                this.actions.splice(startIndex, this.actions.length - startIndex, ...futureUserActions);
+
+                const newActionsSegment = await simulateAsync(this.actions.slice(startIndex), context, baseState, (current, total) => {
                     this.recalculationProgress = { current, total };
                 }, startIndex);
-                this.actions.splice(startIndex, newActionsSegment.length, ...newActionsSegment);
+
+                // For Splice, we need to be careful: simulateAsync returns the FULL list including inserted system actions.
+                this.actions.splice(startIndex, this.actions.length - startIndex, ...newActionsSegment);
+
                 this.relinkDependencies();
                 syncStoresToSnapshot(this.effectiveSnapshot);
             } finally {
@@ -454,6 +467,11 @@ export const useActionsStore = defineStore('actions', {
         async recalculateAll() { return this.recalculateFrom(0); },
 
         relinkDependencies() { relinkDependenciesLogic(this.actions, this.initialSnapshot.researchLevels); },
+
+        syncSystemActions() {
+            // Remove all system-managed actions to fresh start simulation
+            this.actions = this.actions.filter(a => !(a.payload as any).systemManaged);
+        },
 
         toggleGroupExpansion(groupId: string) {
             if (this.expandedGroupIds.has(groupId)) this.expandedGroupIds.delete(groupId);

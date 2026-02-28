@@ -43,13 +43,39 @@
           <button
             @click="handleToggleEarningsEvent"
             class="relative inline-flex h-5 w-10 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner"
-            :class="isEarningsBoostActive ? 'bg-orange-500' : 'bg-slate-200'"
+            :class="[
+              isEarningsBoostActive ? 'bg-orange-500' : 'bg-slate-200',
+              isScheduledEarningsBoost ? 'opacity-50 cursor-not-allowed' : ''
+            ]"
+            :disabled="isScheduledEarningsBoost"
           >
             <span
               class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-all duration-300 shadow-sm"
               :class="isEarningsBoostActive ? 'translate-x-[22px]' : 'translate-x-1'"
             />
           </button>
+        </div>
+        
+        <!-- Earnings Boost Status Row (Moved from ResearchSaleStatus) -->
+        <div class="w-full max-w-sm mt-1 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2 border border-orange-100/30 flex items-center justify-between transition-all hover:bg-white/80">
+          <div class="flex items-center gap-3">
+            <div :class="['w-1.5 h-1.5 rounded-full', isEarningsBoostActive ? 'bg-amber-400 animate-pulse' : 'bg-slate-300']"></div>
+            <div class="flex flex-col">
+              <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Global Schedule</span>
+              <span :class="['text-[10px] font-bold uppercase tracking-tight', isEarningsBoostActive ? 'text-amber-600' : 'text-slate-500']">
+                {{ isEarningsBoostActive ? '2x Boost Active' : 'Scheduled Monday' }}
+              </span>
+            </div>
+          </div>
+          <div 
+            v-if="isEarningsBoostActive" 
+            class="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest shadow-sm"
+          >
+            LIVE
+          </div>
+          <div v-else class="text-[10px] font-mono font-bold text-slate-400">
+            {{ formatDate(nextBoostStart) }}
+          </div>
         </div>
 
       </div>
@@ -160,6 +186,7 @@ import FloatingStats from '@/components/FloatingStats.vue';
 import WarningDialog from '@/components/WarningDialog.vue';
 import RecalculationOverlay from '@/components/RecalculationOverlay.vue';
 import { useSalesStore } from '@/stores/sales';
+import { getEarningsEventWindow, isEarningsEventActiveAt } from '@/lib/time';
 import { useActionExecutor } from '@/composables/useActionExecutor';
 import { generateActionId } from '@/types';
 import { computeDependencies } from '@/lib/actions/executor';
@@ -196,6 +223,8 @@ const eventsStore = useEventsStore();
 const salesStore = useSalesStore();
 const { prepareExecution, completeExecution } = useActionExecutor();
 
+const isScheduledEarningsBoost = computed(() => isEarningsEventActiveAt(actionsStore.effectiveSnapshot.lastStepTime * 1000));
+
 const isEarningsBoostActive = computed(() => actionsStore.effectiveSnapshot.earningsBoost.active);
 
 const pageTitle = computed(() => {
@@ -207,7 +236,25 @@ watch(pageTitle, (newTitle) => {
   document.title = newTitle;
 }, { immediate: true });
 
+const nextBoostStart = computed(() => {
+    const nowMs = actionsStore.effectiveSnapshot.lastStepTime * 1000;
+    const [start] = getEarningsEventWindow(nowMs);
+    return start;
+});
+
+function formatDate(timestampMs: number): string {
+    const date = new Date(timestampMs);
+    return date.toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        hour: 'numeric', 
+        minute: '2-digit',
+        timeZone: virtueStore.ascensionTimezone 
+    });
+}
+
 function handleToggleEarningsEvent() {
+  if (isScheduledEarningsBoost.value) return;
+
   const beforeSnapshot = prepareExecution();
   const currentlyActive = beforeSnapshot.earningsBoost.active;
   
@@ -235,6 +282,7 @@ function handleToggleEarningsEvent() {
     payload,
     cost: 0,
     dependsOn: computeDependencies('toggle_earnings_boost', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 }
 

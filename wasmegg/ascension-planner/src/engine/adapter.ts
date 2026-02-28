@@ -10,6 +10,7 @@ import { useFuelTankStore } from '@/stores/fuelTank';
 import { useTruthEggsStore } from '@/stores/truthEggs';
 import { createEmptySnapshot } from '@/types';
 import { restoreFromSnapshot } from '@/lib/actions/snapshot';
+import { isResearchSaleActiveAt, isEarningsEventActiveAt } from '@/lib/time';
 
 /**
  * Get the current simulation context from Pinia stores.
@@ -20,8 +21,7 @@ export function getSimulationContext(): SimulationContext {
     const virtueStore = useVirtueStore();
 
     // Convert ascension date/time/timezone to Unix timestamp (seconds)
-    const startDateTime = new Date(`${virtueStore.ascensionDate}T${virtueStore.ascensionTime}:00`);
-    const ascensionStartTime = Math.floor(startDateTime.getTime() / 1000);
+    const ascensionStartTime = Math.floor(virtueStore.planStartTime.getTime() / 1000);
 
     return {
         epicResearchLevels: initialStateStore.epicResearchLevels,
@@ -73,6 +73,11 @@ export function createBaseEngineState(initialSnapshot?: CalculationsSnapshot | n
     // because those represent the results of the current simulation.
     // We only use the stores that hold the DEFINITION of the player (InitialStateStore, VirtueStore).
 
+    const context = getSimulationContext();
+    const startTimeMs = context.ascensionStartTime * 1000;
+    const researchSaleActive = isResearchSaleActiveAt(startTimeMs);
+    const earningsEventActive = isEarningsEventActiveAt(startTimeMs);
+
     // We always use empty defaults for the base state.
     // Farm state (research, habs, vehicles) should only be populated via a 
     // Start Ascension action if the user chooses to "Continue Ascension".
@@ -106,13 +111,13 @@ export function createBaseEngineState(initialSnapshot?: CalculationsSnapshot | n
         lastStepTime: 0,
         bankValue: 0,
         activeSales: {
-            research: false,
+            research: researchSaleActive,
             hab: false,
             vehicle: false,
         },
         earningsBoost: {
-            active: false,
-            multiplier: 1,
+            active: earningsEventActive,
+            multiplier: earningsEventActive ? 2.0 : 1.0,
         },
     };
 }

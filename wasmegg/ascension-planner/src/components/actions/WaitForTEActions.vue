@@ -309,6 +309,7 @@ function handleWaitForTE() {
     payload,
     cost: 0, // Free action
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   // Reset selection for next action

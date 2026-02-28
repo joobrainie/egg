@@ -15,9 +15,10 @@ import { useInitialStateStore } from '@/stores/initialState';
 import { useActionsStore } from '@/stores/actions';
 import { computeSnapshot } from '@/engine/compute';
 import { getSimulationContext, createBaseEngineState } from '@/engine/adapter';
-import { applyAction, getTimeToSave, calculateEarningsForTime } from '@/engine/apply';
+import { applyAction, getTimeToSave, getTimeToSaveWithDetails, calculateEarningsForTime } from '@/engine/apply';
 import { calculateMaxVehicleSlots, calculateMaxTrainLength } from '@/calculations/shippingCapacity';
 import { type CalculationsSnapshot } from '@/types';
+import { getResearchSaleWindow, getEarningsEventWindow } from '@/lib/time';
 
 export type ViewType = 'game' | 'cheapest' | 'roi' | 'elr';
 
@@ -73,16 +74,26 @@ export function useResearchViews() {
     });
 
     const gameViewTimes = computed(() => {
-        if (currentView.value !== 'game') return { tiers: {}, researches: {}, tierSeconds: {}, researchSeconds: {} };
+        if (currentView.value !== 'game') return {
+            tiers: {},
+            researches: {},
+            tierSeconds: {},
+            researchSeconds: {},
+            isBoostedResearches: {} as Record<string, boolean>,
+            isSalePredictedResearches: {} as Record<string, boolean>
+        };
 
         const context = getSimulationContext();
         const baseSnapshot = actionsStore.effectiveSnapshot;
         const mods = costModifiers.value;
+        const baseEngineState = createBaseEngineState(baseSnapshot);
 
         const resultResearches: Record<string, string> = {};
         const resultTiers: Record<number, string> = {};
         const resultResearchSeconds: Record<string, number> = {};
         const resultTierSeconds: Record<number, number> = {};
+        const resultIsBoostedResearches: Record<string, boolean> = {};
+        const resultIsSalePredictedResearches: Record<string, boolean> = {};
 
         const levels = commonResearchStore.researchLevels;
 
@@ -93,38 +104,55 @@ export function useResearchViews() {
                 const currentLevel = levels[r.id] || 0;
                 if (currentLevel >= r.levels) continue;
 
-                let rState = createBaseEngineState(baseSnapshot);
                 let rSnapshot = baseSnapshot;
                 let rSeconds = 0;
                 let rInfinite = false;
-                let rVirtualBank = baseSnapshot.bankValue || 0;
 
                 for (let l = currentLevel; l < r.levels; l++) {
                     const price = getDiscountedVirtuePrice(r, l, mods, rSnapshot.activeSales.research);
-                    const seconds = getTimeToSave(price, rSnapshot);
 
-                    if (seconds === Infinity) {
+                    // LOOKAHEAD LOGIC for Game View
+                    let timeDetails = getTimeToSaveWithDetails(price, rSnapshot);
+
+                    if (!rSnapshot.activeSales.research && rSnapshot.currentEgg === 'curiosity') {
+                        const [saleStart] = getResearchSaleWindow(rSnapshot.lastStepTime * 1000);
+                        const secondsToSale = (saleStart - rSnapshot.lastStepTime * 1000) / 1000;
+
+                        // Use price with sale, but we must be careful with doubling. 
+                        // getTimeToSaveWithDetails handles current sale status correctly now.
+                        const discPrice = getDiscountedVirtuePrice(r, l, mods, true);
+                        const discSnapshot = { ...rSnapshot, activeSales: { ...rSnapshot.activeSales, research: true } };
+                        const discDetails = getTimeToSaveWithDetails(discPrice, discSnapshot);
+                        const effectiveWait = Math.max(secondsToSale, discDetails.timeToSave);
+
+                        if (effectiveWait < timeDetails.timeToSave) {
+                            resultIsSalePredictedResearches[r.id] = true;
+                            timeDetails = { timeToSave: effectiveWait, affectedByEvent: discDetails.affectedByEvent };
+                        }
+                    }
+
+                    if (timeDetails.timeToSave === Infinity) {
                         rInfinite = true;
                         break;
                     }
-                    rSeconds += seconds;
+                    rSeconds += timeDetails.timeToSave;
+                    if (timeDetails.affectedByEvent) resultIsBoostedResearches[r.id] = true;
 
-                    rState = {
-                        ...rState,
-                        population: Math.min(rSnapshot.habCapacity, rSnapshot.population + (rSnapshot.offlineIHR / 60) * seconds),
-                        bankValue: 0, // Reset bank after "buying"
+                    // Update local state for next level simulation
+                    const nextRState = {
+                        ...baseEngineState,
+                        population: Math.min(rSnapshot.habCapacity, rSnapshot.population + (rSnapshot.offlineIHR / 60) * timeDetails.timeToSave),
                         researchLevels: {
-                            ...rState.researchLevels,
+                            ...rSnapshot.researchLevels,
                             [r.id]: l + 1
                         }
                     };
-                    rSnapshot = computeSnapshot(rState, context);
+                    rSnapshot = computeSnapshot(nextRState, context);
                 }
                 resultResearches[r.id] = rInfinite ? '∞' : (rSeconds < 0.1 ? '0s' : formatDuration(rSeconds));
                 resultResearchSeconds[r.id] = rInfinite ? Infinity : rSeconds;
             }
 
-            let tierState = createBaseEngineState(baseSnapshot);
             let tierSnapshot = baseSnapshot;
             let tierSeconds = 0;
             let tierInfinite = false;
@@ -143,16 +171,15 @@ export function useResearchViews() {
                     }
                     tierSeconds += seconds;
 
-                    tierState = {
-                        ...tierState,
+                    const nextTierState = {
+                        ...baseEngineState,
                         population: Math.min(tierSnapshot.habCapacity, tierSnapshot.population + (tierSnapshot.offlineIHR / 60) * seconds),
-                        bankValue: 0,
                         researchLevels: {
-                            ...tierState.researchLevels,
+                            ...tierSnapshot.researchLevels,
                             [r.id]: l + 1
                         }
                     };
-                    tierSnapshot = computeSnapshot(tierState, context);
+                    tierSnapshot = computeSnapshot(nextTierState, context);
                 }
                 if (tierInfinite) break;
             }
@@ -167,9 +194,12 @@ export function useResearchViews() {
             tiers: resultTiers,
             researches: resultResearches,
             tierSeconds: resultTierSeconds,
-            researchSeconds: resultResearchSeconds
+            researchSeconds: resultResearchSeconds,
+            isBoostedResearches: resultIsBoostedResearches,
+            isSalePredictedResearches: resultIsSalePredictedResearches,
         };
     });
+
 
     const sortedResearches = computed(() => {
         if (currentView.value === 'game') return [];
@@ -359,29 +389,63 @@ export function useResearchViews() {
                 const nextState = applyAction(baseState, tempAction as any);
                 const nextSnapshot = computeSnapshot(nextState, context);
                 const newEarnings = nextSnapshot.offlineEarnings;
-
                 const delta = newEarnings - currentEarnings;
-                const bankValue = effectiveSnapshot.bankValue || 0;
-                const effectivePrice = Math.max(0, price - bankValue);
-                const roiSeconds = delta > 0 ? price / delta : Infinity;
-                const timeToBuySeconds = getTimeToSave(price, effectiveSnapshot);
+
+                // LOOKAHEAD LOGIC
+                let effectivePrice = price;
+                let isBestToWait = false;
+                let timeDetails = getTimeToSaveWithDetails(price, effectiveSnapshot);
+
+                if (!isSale && effectiveSnapshot.currentEgg === 'curiosity') {
+                    const [saleStart] = getResearchSaleWindow(effectiveSnapshot.lastStepTime * 1000);
+                    const secondsToSale = (saleStart - effectiveSnapshot.lastStepTime * 1000) / 1000;
+
+                    const discountedPrice = getDiscountedVirtuePrice(r, level, mods, true);
+                    const discountedDetails = getTimeToSaveWithDetails(discountedPrice, effectiveSnapshot);
+                    const effectiveWaitTime = Math.max(secondsToSale, discountedDetails.timeToSave);
+
+                    if (effectiveWaitTime < timeDetails.timeToSave) {
+                        isBestToWait = true;
+                        effectivePrice = discountedPrice;
+                        timeDetails = { timeToSave: effectiveWaitTime, affectedByEvent: discountedDetails.affectedByEvent };
+                    }
+                }
+
+                const timeToBuySeconds = timeDetails.timeToSave;
+                const roiSeconds = delta > 0 ? effectivePrice / delta : Infinity;
                 const totalRoiSeconds = timeToBuySeconds + roiSeconds;
+
+                // ROI WARNING Logic
+                let showROIWarning = false;
+                if (!isSale && !isBestToWait && delta > 0) {
+                    const [saleStart] = getResearchSaleWindow(effectiveSnapshot.lastStepTime * 1000);
+                    const purchaseTimeMs = (effectiveSnapshot.lastStepTime + timeToBuySeconds) * 1000;
+                    const paybackWindowSeconds = (saleStart - purchaseTimeMs) / 1000;
+                    const paybackTimeSeconds = (0.7 * price) / delta;
+                    if (paybackTimeSeconds > paybackWindowSeconds) {
+                        showROIWarning = true;
+                    }
+                }
 
                 return {
                     research: r,
-                    price,
+                    price: effectivePrice,
+                    originalPrice: price,
                     currentLevel: level,
                     targetLevel: level + 1,
-                    timeToBuy: timeToBuySeconds > 0 ? (timeToBuySeconds === Infinity ? '∞' : (timeToBuySeconds < 1 ? '0s' : formatDuration(timeToBuySeconds))) : '',
+                    timeToBuy: timeToBuySeconds > 0 ? (timeToBuySeconds === Infinity ? '∞' : (timeToBuySeconds < 0.1 ? '0s' : formatDuration(timeToBuySeconds))) : '',
                     canBuy,
                     isMaxed: false,
                     roiSeconds,
                     totalRoiSeconds,
                     roiLabel: delta > 0 ? formatDuration(roiSeconds) : 'No Impact',
-                    totalRoiLabel: totalRoiSeconds === Infinity ? 'No Impact' : (totalRoiSeconds < 1 ? '0s' : formatDuration(totalRoiSeconds)),
+                    totalRoiLabel: totalRoiSeconds === Infinity ? 'No Impact' : (totalRoiSeconds < 0.1 ? '0s' : formatDuration(totalRoiSeconds)),
                     isLaying,
                     isShipping,
                     nextSnapshot,
+                    isSalePredicted: isBestToWait,
+                    isBoosted: timeDetails.affectedByEvent,
+                    showROIWarning,
                 };
             });
 
@@ -516,11 +580,34 @@ export function useResearchViews() {
         return [];
     });
 
+    const isEarningsBoostActive = computed(() => actionsStore.effectiveSnapshot.earningsBoost.active);
+
+    const nextEventInfo = computed(() => {
+        const nowMs = actionsStore.effectiveSnapshot.lastStepTime * 1000;
+        const [saleStart, saleEnd] = getResearchSaleWindow(nowMs);
+        const [boostStart, boostEnd] = getEarningsEventWindow(nowMs);
+
+        return {
+            researchSale: {
+                active: isResearchSaleActive.value,
+                nextStart: saleStart,
+                nextEnd: saleEnd,
+            },
+            earningsBoost: {
+                active: isEarningsBoostActive.value,
+                nextStart: boostStart,
+                nextEnd: boostEnd,
+            }
+        };
+    });
+
     return {
         currentView,
         viewDescription,
         costModifiers,
         isResearchSaleActive,
+        isEarningsBoostActive,
+        nextEventInfo,
         tiers,
         researchByTier,
         tierSummaries,

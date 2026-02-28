@@ -138,6 +138,7 @@
 import { ref, computed, defineAsyncComponent, watch, nextTick } from 'vue';
 import { iconURL } from 'lib';
 import { useActionsStore } from '@/stores/actions';
+import { useVirtueStore } from '@/stores/virtue';
 import type { Action, VirtueEgg, StartAscensionPayload, ShiftPayload } from '@/types';
 import { VIRTUE_EGG_NAMES } from '@/types';
 import { formatNumber, formatDuration } from '@/lib/format';
@@ -177,6 +178,7 @@ const emit = defineEmits<{
 }>();
 
 const actionsStore = useActionsStore();
+const virtueStore = useVirtueStore();
 
 // Internal state for manually collapsing/expanding the current group
 // This is now managed by the store, but we keep the ref if needed for transition (actually we can remove it)
@@ -264,6 +266,7 @@ const formattedTimestamp = computed(() => {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: virtueStore.ascensionTimezone
   });
 });
 

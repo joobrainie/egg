@@ -86,21 +86,7 @@ const hasStartAction = computed(() => actionsStore.hasStartAction);
 /**
  * Get the ascension start time as a Date object.
  */
-const ascensionStartTime = computed(() => {
-  const { ascensionDate, ascensionTime } = virtueStore;
-
-  // Parse the date and time
-  // Format: "YYYY-MM-DD HH:MM"
-  const dateTimeStr = `${ascensionDate}T${ascensionTime}:00`;
-
-  try {
-    // Parse the date (assumes local timezone for simplicity)
-    // A more robust solution would use a proper timezone library
-    return new Date(dateTimeStr);
-  } catch {
-    return new Date();
-  }
-});
+const ascensionStartTime = computed(() => virtueStore.planStartTime);
 
 /**
  * Represents a single action displayed individually.

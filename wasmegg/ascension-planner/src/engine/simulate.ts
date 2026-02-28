@@ -3,6 +3,14 @@ import type { EngineState, SimulationContext, SimulationResult } from './types';
 import { applyAction, computePassiveEggsDelivered, applyPassiveEggs, applyTime, getActionDuration, refreshActionPayload } from './apply';
 import { computeSnapshot } from './compute';
 import { computeDeltas } from '@/lib/actions/snapshot';
+import {
+    getNextEventBoundary,
+    isResearchSaleActiveAt,
+    isEarningsEventActiveAt,
+    getEarningsMultiplierAt,
+    getResearchPriceMultiplierAt
+} from '@/lib/time';
+import { generateActionId } from '@/types';
 
 /**
  * Simulate a list of actions to produce a timeline of states.
@@ -36,48 +44,160 @@ export function simulate(
     let currentState = baseState;
     let currentSnapshot = baseSnapshot;
 
-    for (let i = 0; i < actions.length; i++) {
+    let i = 0;
+    while (i < actions.length) {
         let action = actions[i];
-        const actualIndex = startIndex + i;
+        const actualIndex = startIndex + results.length;
 
         // 0. Refresh dynamic payloads (e.g. wait_for_te duration based on new ELR)
         action = refreshActionPayload(action, currentSnapshot, context);
 
-        // 1. Apply action to get new pure state
+        // 0b. Misalignment check: if the event starts EXACTLY at the start of this action, 
+        // the state may not match the temporal truth.
+        // We skip this check for system-managed toggles to prevent infinite generation loops.
+        const startTimeMs = currentSnapshot.lastStepTime * 1000;
+        const isSystemToggle = (action.type === 'toggle_sale' || action.type === 'toggle_earnings_boost') &&
+            (action as Action<'toggle_sale'>).payload.systemManaged === true;
+
+        const realSale = isResearchSaleActiveAt(startTimeMs);
+        const stateSale = !!currentSnapshot.activeSales.research;
+        const realBoost = isEarningsEventActiveAt(startTimeMs);
+        const stateBoost = currentSnapshot.earningsBoost.active;
+
+        if (!isSystemToggle) {
+            const componentsToInsert: Action[] = [];
+
+            if (stateSale !== realSale && currentSnapshot.currentEgg === 'curiosity') {
+                const toggleAction: Action<'toggle_sale'> = {
+                    id: generateActionId(), index: actualIndex, timestamp: Date.now(), type: 'toggle_sale',
+                    payload: { saleType: 'research', active: realSale, multiplier: realSale ? 0.3 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (stateBoost !== realBoost) {
+                const toggleAction: Action<'toggle_earnings_boost'> = {
+                    id: generateActionId(), index: actualIndex + componentsToInsert.length, timestamp: Date.now(), type: 'toggle_earnings_boost',
+                    payload: { active: realBoost, multiplier: realBoost ? 2.0 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (componentsToInsert.length > 0) {
+                actions.splice(i, 0, ...componentsToInsert);
+                continue;
+            }
+        }
+
+        // 1. Check for event boundaries CROSSING within this action's duration
+        const durationSeconds = getActionDuration(action, currentSnapshot);
+        const endTimeMs = (currentSnapshot.lastStepTime + durationSeconds) * 1000;
+        const nextBoundaryMs = getNextEventBoundary(startTimeMs);
+
+        if (nextBoundaryMs < endTimeMs - 100 && Math.abs(nextBoundaryMs - startTimeMs) > 100) {
+            // A boundary is crossed during this action!
+            // We insert a toggle action and a wait action before this one.
+            const secondsToBoundary = (nextBoundaryMs - startTimeMs) / 1000;
+
+            // Convert wait_for_time to a targetTimestamp so it safely resumes after splitting
+            if (action.type === 'wait_for_time') {
+                const payload = action.payload as import('@/types').WaitForTimePayload;
+                if (typeof payload.targetTimestamp !== 'number') {
+                    action.payload = { ...payload, targetTimestamp: currentSnapshot.lastStepTime + payload.totalTimeSeconds };
+                }
+            }
+
+            const waitAction: Action<'wait_for_time'> = {
+                id: generateActionId(),
+                index: actualIndex,
+                timestamp: Date.now(),
+                type: 'wait_for_time',
+                payload: { totalTimeSeconds: secondsToBoundary, targetTimestamp: nextBoundaryMs / 1000 },
+                cost: 0,
+                dependsOn: [],
+                dependents: [],
+                startState: currentSnapshot,
+                endState: currentSnapshot, // Will be updated by simulation loop
+                totalTimeSeconds: secondsToBoundary,
+                elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0,
+                layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+            };
+
+            const isSaleNow = isResearchSaleActiveAt(nextBoundaryMs + 100);
+            const isBoostNow = isEarningsEventActiveAt(nextBoundaryMs + 100);
+
+            const componentsToInsert: Action[] = [waitAction];
+
+            if (stateSale !== isSaleNow && currentSnapshot.currentEgg === 'curiosity') {
+                const toggleAction: Action<'toggle_sale'> = {
+                    id: generateActionId(),
+                    index: actualIndex + 1,
+                    timestamp: Date.now(),
+                    type: 'toggle_sale',
+                    payload: { saleType: 'research', active: isSaleNow, multiplier: isSaleNow ? 0.3 : 1.0, systemManaged: true },
+                    cost: 0,
+                    dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (stateBoost !== isBoostNow) {
+                const toggleAction: Action<'toggle_earnings_boost'> = {
+                    id: generateActionId(),
+                    index: actualIndex + 1 + (componentsToInsert.length - 1),
+                    timestamp: Date.now(),
+                    type: 'toggle_earnings_boost',
+                    payload: { active: isBoostNow, multiplier: isBoostNow ? 2.0 : 1.0, systemManaged: true },
+                    cost: 0,
+                    dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            actions.splice(i, 0, ...componentsToInsert);
+            continue;
+        }
+
+        // 2. Apply action to get new pure state
         currentState = applyAction(currentState, action);
 
-        // 1b. Add passively delivered eggs during this action's duration
+        // 2b. Add passively delivered eggs during this action's duration
         // Uses the PREVIOUS snapshot's ELR (eggs are shipped at the old rate while saving for the action)
-        const durationSeconds = getActionDuration(action, currentSnapshot);
-        const passiveEggs = computePassiveEggsDelivered(action, currentSnapshot);
+        // If a boundary was crossed, durationSeconds might be less than the original action's duration.
+        const finalDuration = getActionDuration(action, currentSnapshot);
+        const passiveEggs = computePassiveEggsDelivered(action, currentSnapshot, finalDuration);
         currentState = applyPassiveEggs(currentState, passiveEggs);
 
-        currentState = applyTime(currentState, durationSeconds, currentSnapshot);
+        currentState = applyTime(currentState, finalDuration, currentSnapshot);
 
-        // 2. Compute full snapshot
+        // 3. Compute full snapshot
         const newSnapshot = computeSnapshot(currentState, context);
 
-        // 3. Compute deltas vs previous state
-        // For the first action, we compare against baseSnapshot (or should we?)
-        // In the current store, start_ascension has 0 deltas usually.
-        // computeDeltas(baseSnapshot, newSnapshot) might show diffs if start_ascension changed the egg.
-        const prevSnap = i === 0 ? baseSnapshot : previousSnapshot!;
-
-        // 3. Compute deltas vs previous state
+        // 4. Compute deltas vs previous state
+        // For the first action, we compare against baseSnapshot.
+        // For subsequent actions, we compare against the endState of the previous result.
+        const prevSnap = results.length === 0 ? baseSnapshot : results[results.length - 1].endState;
         const deltas = computeDeltas(prevSnap, newSnapshot);
 
-        // 4. Update action with new results and correct index
+        // 5. Update action with new results and correct index
         results.push({
             ...action,
             index: actualIndex,
             ...deltas,
-            totalTimeSeconds: durationSeconds,
+            totalTimeSeconds: finalDuration,
+            startState: currentSnapshot,
             endState: newSnapshot, // Caller should markRaw this if using Vue
         });
 
-        // 5. Update currentState for the next iteration.
-        // This is CRITICAL: simulation must propagate the computed state 
-        // (population, egg delivery, etc.) to the next action or else 
+        // 6. Update currentState for the next iteration.
+        // This is CRITICAL: simulation must propagate the computed state
+        // (population, egg delivery, etc.) to the next action or else
         // subsequent actions will start from stale states.
         currentState = {
             ...currentState,
@@ -89,7 +209,49 @@ export function simulate(
             fuelTankAmounts: { ...newSnapshot.fuelTankAmounts },
         };
 
-        previousSnapshot = newSnapshot;
+        // previousSnapshot = newSnapshot; // No longer needed
+        currentSnapshot = newSnapshot;
+        i++;
+    }
+
+    // Append final states if ended precisely on a boundary
+    const finalTimeMs = currentSnapshot.lastStepTime * 1000;
+    const finalSale = isResearchSaleActiveAt(finalTimeMs);
+    const finalStateSale = !!currentSnapshot.activeSales.research;
+    const finalBoost = isEarningsEventActiveAt(finalTimeMs);
+    const finalStateBoost = currentSnapshot.earningsBoost.active;
+
+    if (finalSale !== finalStateSale && currentSnapshot.currentEgg === 'curiosity') {
+        const toggleAction: Action<'toggle_sale'> = {
+            id: generateActionId(), index: startIndex + results.length, timestamp: Date.now(), type: 'toggle_sale',
+            payload: { saleType: 'research', active: finalSale, multiplier: finalSale ? 0.3 : 1.0, systemManaged: true },
+            cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+            elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+        };
+        actions.push(toggleAction);
+
+        currentState = applyAction(currentState, toggleAction);
+        const newSnapshot = computeSnapshot(currentState, context);
+        const deltas = computeDeltas(currentSnapshot, newSnapshot);
+
+        results.push({ ...toggleAction, ...deltas, endState: newSnapshot });
+        currentSnapshot = newSnapshot;
+    }
+
+    if (finalBoost !== finalStateBoost) {
+        const toggleAction: Action<'toggle_earnings_boost'> = {
+            id: generateActionId(), index: startIndex + results.length, timestamp: Date.now(), type: 'toggle_earnings_boost',
+            payload: { active: finalBoost, multiplier: finalBoost ? 2.0 : 1.0, systemManaged: true },
+            cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+            elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+        };
+        actions.push(toggleAction);
+
+        currentState = applyAction(currentState, toggleAction);
+        const newSnapshot = computeSnapshot(currentState, context);
+        const deltas = computeDeltas(currentSnapshot, newSnapshot);
+
+        results.push({ ...toggleAction, ...deltas, endState: newSnapshot });
         currentSnapshot = newSnapshot;
     }
 
@@ -107,7 +269,6 @@ export async function simulateAsync(
     startIndex: number = 0
 ): Promise<Action[]> {
     const results: Action[] = [];
-    let previousSnapshot: CalculationsSnapshot | null = null;
     const baseSnapshot = computeSnapshot(baseState, context);
 
     let currentState = baseState;
@@ -117,34 +278,136 @@ export async function simulateAsync(
     // A smaller number makes the UI smoother but total time slightly longer
     const YIELD_INTERVAL = 20;
 
-    for (let i = 0; i < actions.length; i++) {
+    let i = 0;
+    const initialActionCount = actions.length;
+
+    while (i < actions.length) {
         // Yield check
-        if (i % YIELD_INTERVAL === 0) {
-            if (onProgress) onProgress(i, actions.length);
+        if (results.length % YIELD_INTERVAL === 0) {
+            if (onProgress) onProgress(i, initialActionCount); // Use i for progress relative to original
             await new Promise(resolve => setTimeout(resolve, 0));
         }
 
         let action = actions[i];
-        const actualIndex = startIndex + i;
+        const actualIndex = startIndex + results.length;
 
-        action = refreshActionPayload(action, currentSnapshot, context);
-        currentState = applyAction(currentState, action);
+        // 0b. Misalignment check
+        const startTimeMs = currentSnapshot.lastStepTime * 1000;
+        const isSystemToggle = (action.type === 'toggle_sale' || action.type === 'toggle_earnings_boost') &&
+            (action as Action<'toggle_sale'>).payload.systemManaged === true;
+
+        const realSale = isResearchSaleActiveAt(startTimeMs);
+        const stateSale = !!currentSnapshot.activeSales.research;
+        const realBoost = isEarningsEventActiveAt(startTimeMs);
+        const stateBoost = currentSnapshot.earningsBoost.active;
+
+        if (!isSystemToggle) {
+            const componentsToInsert: Action[] = [];
+
+            if (stateSale !== realSale && currentSnapshot.currentEgg === 'curiosity') {
+                const toggleAction: Action<'toggle_sale'> = {
+                    id: generateActionId(), index: actualIndex, timestamp: Date.now(), type: 'toggle_sale',
+                    payload: { saleType: 'research', active: realSale, multiplier: realSale ? 0.3 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (stateBoost !== realBoost) {
+                const toggleAction: Action<'toggle_earnings_boost'> = {
+                    id: generateActionId(), index: actualIndex + componentsToInsert.length, timestamp: Date.now(), type: 'toggle_earnings_boost',
+                    payload: { active: realBoost, multiplier: realBoost ? 2.0 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (componentsToInsert.length > 0) {
+                actions.splice(i, 0, ...componentsToInsert);
+                continue;
+            }
+        }
+
+        // Boundary logic
         const durationSeconds = getActionDuration(action, currentSnapshot);
-        const passiveEggs = computePassiveEggsDelivered(action, currentSnapshot);
-        currentState = applyPassiveEggs(currentState, passiveEggs);
+        const endTimeMs = (currentSnapshot.lastStepTime + durationSeconds) * 1000;
+        const nextBoundaryMs = getNextEventBoundary(startTimeMs);
 
-        currentState = applyTime(currentState, durationSeconds, currentSnapshot);
+        if (nextBoundaryMs < endTimeMs - 100 && Math.abs(nextBoundaryMs - startTimeMs) > 100) {
+            const secondsToBoundary = (nextBoundaryMs - startTimeMs) / 1000;
+            // Convert wait_for_time to a targetTimestamp so it safely resumes after splitting
+            if (action.type === 'wait_for_time') {
+                const payload = action.payload as import('@/types').WaitForTimePayload;
+                if (typeof payload.targetTimestamp !== 'number') {
+                    action.payload = { ...payload, targetTimestamp: currentSnapshot.lastStepTime + payload.totalTimeSeconds };
+                }
+            }
+
+            const waitAction: Action<'wait_for_time'> = {
+                id: generateActionId(),
+                index: actualIndex,
+                timestamp: Date.now(),
+                type: 'wait_for_time',
+                payload: { totalTimeSeconds: secondsToBoundary, targetTimestamp: nextBoundaryMs / 1000 },
+                cost: 0,
+                dependsOn: [],
+                dependents: [],
+                startState: currentSnapshot,
+                endState: currentSnapshot,
+                totalTimeSeconds: secondsToBoundary,
+                elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0,
+                layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+            };
+
+            const isSaleNow = isResearchSaleActiveAt(nextBoundaryMs + 100);
+            const isBoostNow = isEarningsEventActiveAt(nextBoundaryMs + 100);
+
+            const componentsToInsert: Action[] = [waitAction];
+
+            if (stateSale !== isSaleNow && currentSnapshot.currentEgg === 'curiosity') {
+                const toggleAction: Action<'toggle_sale'> = {
+                    id: generateActionId(), index: actualIndex + 1, timestamp: Date.now(), type: 'toggle_sale',
+                    payload: { saleType: 'research', active: isSaleNow, multiplier: isSaleNow ? 0.3 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            if (stateBoost !== isBoostNow) {
+                const toggleAction: Action<'toggle_earnings_boost'> = {
+                    id: generateActionId(), index: actualIndex + 1 + (componentsToInsert.length - 1), timestamp: Date.now(), type: 'toggle_earnings_boost',
+                    payload: { active: isBoostNow, multiplier: isBoostNow ? 2.0 : 1.0, systemManaged: true },
+                    cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+                    elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+                };
+                componentsToInsert.push(toggleAction);
+            }
+
+            actions.splice(i, 0, ...componentsToInsert);
+            continue;
+        }
+
+        currentState = applyAction(currentState, action);
+        const finalDuration = getActionDuration(action, currentSnapshot);
+        currentState = applyPassiveEggs(currentState, computePassiveEggsDelivered(action, currentSnapshot, finalDuration));
+        currentState = applyTime(currentState, finalDuration, currentSnapshot);
 
         const newSnapshot = computeSnapshot(currentState, context);
-        const prevSnap = i === 0 ? baseSnapshot : previousSnapshot!;
+        const prevSnap = results.length === 0 ? baseSnapshot : results[results.length - 1].endState;
         const deltas = computeDeltas(prevSnap, newSnapshot);
+
         results.push({
             ...action,
             index: actualIndex,
             ...deltas,
-            totalTimeSeconds: durationSeconds,
+            totalTimeSeconds: finalDuration,
+            startState: currentSnapshot,
             endState: newSnapshot,
         });
+
         currentState = {
             ...currentState,
             population: newSnapshot.population,
@@ -153,12 +416,52 @@ export async function simulateAsync(
             eggsDelivered: { ...newSnapshot.eggsDelivered },
             fuelTankAmounts: { ...newSnapshot.fuelTankAmounts },
         };
-        previousSnapshot = newSnapshot;
+
+        currentSnapshot = newSnapshot;
+        i++;
+    }
+
+    // Append final states if ended precisely on a boundary
+    const finalTimeMs = currentSnapshot.lastStepTime * 1000;
+    const finalSale = isResearchSaleActiveAt(finalTimeMs);
+    const finalStateSale = !!currentSnapshot.activeSales.research;
+    const finalBoost = isEarningsEventActiveAt(finalTimeMs);
+    const finalStateBoost = currentSnapshot.earningsBoost.active;
+
+    if (finalSale !== finalStateSale && currentSnapshot.currentEgg === 'curiosity') {
+        const toggleAction: Action<'toggle_sale'> = {
+            id: generateActionId(), index: startIndex + results.length, timestamp: Date.now(), type: 'toggle_sale',
+            payload: { saleType: 'research', active: finalSale, multiplier: finalSale ? 0.3 : 1.0, systemManaged: true },
+            cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+            elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+        };
+        actions.push(toggleAction);
+
+        currentState = applyAction(currentState, toggleAction);
+        const newSnapshot = computeSnapshot(currentState, context);
+        const deltas = computeDeltas(currentSnapshot, newSnapshot);
+
+        results.push({ ...toggleAction, ...deltas, endState: newSnapshot });
         currentSnapshot = newSnapshot;
     }
 
-    // Final progress update
-    if (onProgress) onProgress(actions.length, actions.length);
+    if (finalBoost !== finalStateBoost) {
+        const toggleAction: Action<'toggle_earnings_boost'> = {
+            id: generateActionId(), index: startIndex + results.length, timestamp: Date.now(), type: 'toggle_earnings_boost',
+            payload: { active: finalBoost, multiplier: finalBoost ? 2.0 : 1.0, systemManaged: true },
+            cost: 0, dependsOn: [], dependents: [], startState: currentSnapshot, endState: currentSnapshot, totalTimeSeconds: 0,
+            elrDelta: 0, offlineEarningsDelta: 0, eggValueDelta: 0, habCapacityDelta: 0, layRateDelta: 0, shippingCapacityDelta: 0, ihrDelta: 0, bankDelta: 0, populationDelta: 0,
+        };
+        actions.push(toggleAction);
 
+        currentState = applyAction(currentState, toggleAction);
+        const newSnapshot = computeSnapshot(currentState, context);
+        const deltas = computeDeltas(currentSnapshot, newSnapshot);
+
+        results.push({ ...toggleAction, ...deltas, endState: newSnapshot });
+        currentSnapshot = newSnapshot;
+    }
+
+    if (onProgress) onProgress(initialActionCount, initialActionCount);
     return results;
 }

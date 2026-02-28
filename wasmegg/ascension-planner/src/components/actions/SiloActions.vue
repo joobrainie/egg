@@ -172,6 +172,7 @@ function handleBuySilo() {
     payload,
     cost,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 }
 </script>

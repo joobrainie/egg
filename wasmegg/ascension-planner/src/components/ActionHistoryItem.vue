@@ -35,6 +35,8 @@
           <span :class="{ 'text-slate-900': eggType }">
             {{ eggName || displayName }}{{ isContinued ? ' (continued)' : '' }}
           </span>
+          <!-- Sale Badge -->
+          <span v-if="isDiscountedResearch" class="bg-indigo-500 text-white text-[8px] px-1 rounded-sm font-black tracking-tighter shadow-sm animate-pulse-slow">70% OFF</span>
         </div>
         <div 
           class="text-[9px] uppercase tracking-widest font-black opacity-60 text-slate-500" 
@@ -196,6 +198,11 @@ const isPurchaseAction = computed(() => [
   'launch_missions'
 ].includes(props.action.type));
 
+const isDiscountedResearch = computed(() => {
+  if (props.action.type !== 'buy_research') return false;
+  return props.action.startState?.activeSales?.research;
+});
+
 const eggType = computed(() => {
   if (props.action.type === 'start_ascension') {
     return (props.action.payload as StartAscensionPayload).initialEgg;
@@ -336,6 +343,7 @@ const timeToSaveTitle = computed(() => {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: virtueStore.ascensionTimezone
   });
 });
 

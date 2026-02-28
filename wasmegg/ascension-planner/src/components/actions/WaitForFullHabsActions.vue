@@ -126,6 +126,7 @@ function handleWaitForFullHabs() {
     payload,
     cost: 0,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 }
 </script>

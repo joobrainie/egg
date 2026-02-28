@@ -107,6 +107,14 @@ export function refreshActionPayload(
         return { ...action, payload };
     }
 
+    if (action.type === 'wait_for_time') {
+        const payload = { ...action.payload as import('@/types').WaitForTimePayload };
+        if (payload.targetTimestamp) {
+            payload.totalTimeSeconds = Math.max(0, payload.targetTimestamp - prevSnapshot.lastStepTime);
+        }
+        return { ...action, payload };
+    }
+
     if (action.type === 'wait_for_missions') {
         const payload = { ...action.payload as import('@/types').WaitForMissionsPayload };
         const maxReturn = Math.max(...payload.missions.map(m => m.returnTimestamp || 0));
@@ -164,7 +172,8 @@ export function getActionDuration(
  */
 export function computePassiveEggsDelivered(
     action: Action,
-    prevSnapshot: CalculationsSnapshot
+    prevSnapshot: CalculationsSnapshot,
+    overrideDuration?: number
 ): number {
     const NO_PASSIVE_TYPES = [
         'store_fuel', 'wait_for_te', 'start_ascension', 'shift', 'change_artifacts',
@@ -173,7 +182,7 @@ export function computePassiveEggsDelivered(
     ];
     if (NO_PASSIVE_TYPES.includes(action.type)) return 0;
 
-    const durationSeconds = getActionDuration(action, prevSnapshot);
+    const durationSeconds = overrideDuration !== undefined ? overrideDuration : getActionDuration(action, prevSnapshot);
     if (durationSeconds > 0) {
         return calculateEggsDeliveredForTime(durationSeconds, prevSnapshot);
     }

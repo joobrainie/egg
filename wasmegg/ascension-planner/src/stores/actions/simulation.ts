@@ -64,6 +64,7 @@ export function createDefaultStartAction(initialEgg: VirtueEgg = 'curiosity'): A
         bankDelta: 0,
         populationDelta: 0,
         totalTimeSeconds: 0,
+        startState: createEmptySnapshot(),
         endState: createEmptySnapshot(),
         dependsOn: [],
         dependents: [],

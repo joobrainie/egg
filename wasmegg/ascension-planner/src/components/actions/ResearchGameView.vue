@@ -29,7 +29,7 @@
             v-if="tierSummaries[tier]?.isUnlocked && !isTierMaxed(tier)"
             class="btn-premium btn-secondary text-xs py-1 px-2"
             @click.stop="$emit('max-tier', tier)"
-            v-tippy="viewTimes.tiers[tier] ? formatAbsoluteTime(viewTimes.tierSeconds[tier], baseTimestamp) : ''"
+            v-tippy="viewTimes.tiers[tier] ? formatAbsoluteTime(viewTimes.tierSeconds[tier], baseTimestamp, virtueStore.ascensionTimezone) : ''"
           >
             Max Tier
             <span v-if="viewTimes.tiers[tier]" class="ml-1 text-[9px] opacity-70">({{ viewTimes.tiers[tier] }})</span>
@@ -62,6 +62,8 @@
           :show-max="true"
           :max-time="viewTimes.researches[research.id]"
           :max-time-seconds="viewTimes.researchSeconds[research.id]"
+          :is-boosted="viewTimes.isBoostedResearches[research.id]"
+          :is-sale-predicted="viewTimes.isSalePredictedResearches[research.id]"
           @buy="$emit('buy', research)"
           @max="$emit('max', research)"
         />
@@ -87,6 +89,8 @@ const props = defineProps<{
     researches: Record<string, string>;
     tierSeconds: Record<number, number>;
     researchSeconds: Record<string, number>;
+    isBoostedResearches: Record<string, boolean>;
+    isSalePredictedResearches: Record<string, boolean>;
   };
   levels: Record<string, number>;
   getResearchPrice: (r: CommonResearch) => number;

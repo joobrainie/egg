@@ -34,6 +34,9 @@
         :extra-seconds="item.extraSeconds"
         :hpp="item.hpp"
         :recommendation-note="item.recommendationNote"
+        :is-boosted="item.isBoosted"
+        :is-sale-predicted="item.isSalePredicted"
+        :show-roi-warning="item.showROIWarning"
         @buy="$emit('buy', item.research)"
         @max="$emit('max', item.research)"
         @buy-to-here="$emit('buy-to-here', idx)"
@@ -70,6 +73,9 @@ interface SortedResearchItem {
   extraSeconds?: number;
   hpp?: number;
   recommendationNote?: string;
+  isBoosted?: boolean;
+  isSalePredicted?: boolean;
+  showROIWarning?: boolean;
 }
 
 defineProps<{

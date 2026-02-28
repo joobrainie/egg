@@ -276,6 +276,7 @@ function handleHabChange(slotIndex: number, habId: number | undefined) {
       payload,
       cost,
       dependsOn: dependencies,
+    startState: beforeSnapshot,
     },
     beforeSnapshot
   );
@@ -302,6 +303,7 @@ function handleToggleSale() {
       payload,
       cost: 0,
       dependsOn: computeDependencies('toggle_sale', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
+      startState: beforeSnapshot,
     },
     beforeSnapshot
   );

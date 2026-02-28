@@ -271,6 +271,7 @@ function handleStoreFuel() {
     payload,
     cost: 0, // Free action
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   // Clear input
@@ -313,6 +314,7 @@ async function handleRemoveFuel(egg: VirtueEgg) {
     payload,
     cost: 0,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   removeInputs.value[egg] = '';

@@ -387,6 +387,7 @@ function handleVehicleChange(slotIndex: number, vehicleId: number | undefined) {
       payload,
       cost,
       dependsOn: dependencies,
+    startState: beforeSnapshot,
     },
     beforeSnapshot
   );
@@ -517,6 +518,7 @@ function addTrainCarAction(slotIndex: number, fromLength: number, toLength: numb
       payload,
       cost,
       dependsOn: dependencies,
+    startState: beforeSnapshot,
     },
     beforeSnapshot
   );
@@ -543,6 +545,7 @@ function handleToggleSale() {
       payload,
       cost: 0,
       dependsOn: computeDependencies('toggle_sale', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
+      startState: beforeSnapshot,
     },
     beforeSnapshot
   );

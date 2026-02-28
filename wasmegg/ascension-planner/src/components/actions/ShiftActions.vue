@@ -213,6 +213,7 @@ function handleShift(toEgg: VirtueEgg) {
     },
     cost,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   // Auto-activate relevant sales for the new egg

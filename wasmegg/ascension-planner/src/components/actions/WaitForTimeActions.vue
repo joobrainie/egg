@@ -75,6 +75,7 @@ function handleWaitTime() {
     payload,
     cost: 0,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   inputDuration.value = '';

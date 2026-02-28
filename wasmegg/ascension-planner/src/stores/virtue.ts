@@ -85,10 +85,33 @@ export const useVirtueStore = defineStore('virtue', {
 
     /**
      * Get the base start time for the planning session as a Date object.
+     * Correctly interprets the local date/time in the context of the selected timezone.
      */
     planStartTime(): Date {
       try {
-        return new Date(`${this.ascensionDate}T${this.ascensionTime}:00`);
+        // Construct a UTC date representing the "wall clock" time entered by the user
+        const wallClockUtc = new Date(`${this.ascensionDate}T${this.ascensionTime}:00Z`);
+
+        // Find the offset of the target timezone at this wall clock time.
+        // We use a small trick: format the UTC date in the target timezone and find the GMT offset.
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: this.ascensionTimezone,
+          timeZoneName: 'longOffset'
+        }).formatToParts(wallClockUtc);
+
+        const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+        const match = offsetPart.match(/GMT([+-]\d+):(\d+)/);
+
+        let offsetSeconds = 0;
+        if (match) {
+          const hours = parseInt(match[1]);
+          const minutes = parseInt(match[2]);
+          offsetSeconds = hours * 3600 + (hours < 0 ? -minutes : minutes) * 60;
+        }
+
+        // To get the actual UTC timestamp:
+        // UTC = WallClock - Offset
+        return new Date(wallClockUtc.getTime() - offsetSeconds * 1000);
       } catch {
         return new Date();
       }

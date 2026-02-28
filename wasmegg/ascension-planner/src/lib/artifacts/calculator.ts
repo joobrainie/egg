@@ -6,10 +6,18 @@ import {
 } from './types';
 import { getArtifact, getStone } from './data';
 
+let lastLoadoutKey = '';
+let lastModifiers: ArtifactModifiers | null = null;
+
 /**
  * Calculate all artifact modifiers from an equipped loadout
  */
 export function calculateArtifactModifiers(loadout: EquippedArtifact[]): ArtifactModifiers {
+    const key = JSON.stringify(loadout);
+    if (key === lastLoadoutKey && lastModifiers) {
+        return lastModifiers;
+    }
+
     const effectsByTarget: Record<string, ArtifactEffect[]> = {};
 
     for (const slot of loadout) {
@@ -47,13 +55,13 @@ export function calculateArtifactModifiers(loadout: EquippedArtifact[]): Artifac
         const totalMultiplier = effects.reduce((acc, e) => acc * (1 + e.effectDelta), 1);
         return {
             effectTarget: target,
-            effects,
+            effects: [...effects],
             totalMultiplier,
             isMultiplicative: true,
         };
     }
 
-    return {
+    const result = {
         eggValue: calcModifier('egg value'),
         habCapacity: calcModifier('hab capacity'),
         shippingRate: calcModifier('shipping rate'),
@@ -62,7 +70,12 @@ export function calculateArtifactModifiers(loadout: EquippedArtifact[]): Artifac
         internalHatcheryRate: calcModifier('internal hatchery rate'),
         researchCost: calcModifier('research cost'),
     };
+
+    lastLoadoutKey = key;
+    lastModifiers = result;
+    return result;
 }
+
 
 /**
  * Create empty artifact modifiers (all multipliers = 1)

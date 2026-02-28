@@ -310,15 +310,16 @@ const dates = computed(() => {
  * Format date/time as: Feb 7, 9:14 PM
  */
 function formatDateTime(date: Date): string {
-  const options: Intl.DateTimeFormatOptions = {
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  };
-  return date.toLocaleString('en-US', options);
+    timeZone: virtueStore.ascensionTimezone
+  });
 }
 
 /**

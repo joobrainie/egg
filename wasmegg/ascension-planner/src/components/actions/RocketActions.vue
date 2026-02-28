@@ -155,6 +155,7 @@ function handleLaunch() {
     payload,
     cost: totalCost,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   // Clear the mission queue

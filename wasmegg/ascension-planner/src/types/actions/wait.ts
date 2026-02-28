@@ -18,6 +18,7 @@ export interface WaitForTEPayload {
  */
 export interface WaitForTimePayload {
     totalTimeSeconds: number;
+    targetTimestamp?: number; // Optional absolute time in seconds
 }
 
 /**

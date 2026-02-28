@@ -20,6 +20,7 @@ export interface ToggleSalePayload {
     saleType: SaleType;
     active: boolean;
     multiplier: number;
+    systemManaged?: boolean;
 }
 
 /**
@@ -29,4 +30,5 @@ export interface ToggleEarningsBoostPayload {
     active: boolean;
     multiplier: number;
     eventId?: string;
+    systemManaged?: boolean;
 }

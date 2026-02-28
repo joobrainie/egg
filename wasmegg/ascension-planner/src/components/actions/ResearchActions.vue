@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-4">
-    <ResearchSaleToggle 
-      :is-active="isResearchSaleActive" 
-      @toggle="handleToggleSale" 
+    <ResearchSaleStatus 
+      :is-research-sale-active="isResearchSaleActive" 
+      :next-event-info="nextEventInfo"
     />
 
     <SmartBuy 
@@ -70,7 +70,7 @@ import { useResearchViews, VIEWS } from '@/composables/useResearchViews';
 import { getTimeToSave } from '@/engine/apply';
 
 // Sub-components
-import ResearchSaleToggle from './ResearchSaleToggle.vue';
+import ResearchSaleStatus from './ResearchSaleStatus.vue';
 import SmartBuy from './SmartBuy.vue';
 import ResearchViewSelector from './ResearchViewSelector.vue';
 import ResearchGameView from './ResearchGameView.vue';
@@ -89,6 +89,8 @@ const {
   viewDescription,
   costModifiers,
   isResearchSaleActive,
+  isEarningsBoostActive,
+  nextEventInfo,
   tiers,
   researchByTier,
   tierSummaries,
@@ -153,6 +155,7 @@ function buyOneLevel(research: CommonResearch): boolean {
     payload,
     cost,
     dependsOn: dependencies,
+    startState: beforeSnapshot,
   }, beforeSnapshot);
 
   // Trigger automated sweep if Always On is enabled
@@ -261,31 +264,5 @@ function handleBuyToHere(index: number) {
         buyOneLevel(item.research);
     }
   });
-}
-
-function handleToggleSale() {
-  const beforeSnapshot = prepareExecution();
-  const currentlyActive = beforeSnapshot.activeSales.research;
-
-  const payload = {
-    saleType: 'research' as const,
-    active: !currentlyActive,
-    multiplier: 0.3, // 70% off
-  };
-
-  // Update store state
-  salesStore.setSaleActive('research', !currentlyActive);
-
-  // Deactivate Smart Buy Always On whenever a sale is toggled
-  smartBuyState.value.alwaysOn = false;
-
-  completeExecution({
-    id: generateActionId(),
-    timestamp: Date.now(),
-    type: 'toggle_sale',
-    payload,
-    cost: 0,
-    dependsOn: computeDependencies('toggle_sale', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
-  }, beforeSnapshot);
 }
 </script>
