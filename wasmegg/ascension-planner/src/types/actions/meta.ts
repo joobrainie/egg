@@ -29,6 +29,7 @@ export interface BaseAction {
     totalTimeSeconds: number;
     dependsOn: string[];
     dependents: string[];
+    isSystem?: boolean;
 }
 
 /**

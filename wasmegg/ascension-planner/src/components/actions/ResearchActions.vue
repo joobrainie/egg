@@ -21,6 +21,35 @@
       {{ viewDescription }}
     </p>
 
+    <!-- Sale Lookahead -->
+    <div v-if="timeUntilNextSale !== null && !isResearchSaleActive" class="px-5 py-4 bg-purple-50 rounded-2xl border border-purple-100 flex items-center justify-between mb-2">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white border border-purple-200 shadow-sm flex items-center justify-center p-2">
+                <img :src="iconURL('egginc/icon_sale.png', 64)" class="w-full h-full object-contain" />
+            </div>
+            <div>
+                <p class="text-[10px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1.5">Next Research Sale</p>
+                <p class="text-sm font-black text-purple-900 leading-none">In {{ formatDuration(timeUntilNextSale) }}</p>
+            </div>
+        </div>
+        <button v-if="timeUntilNextSale > 0" @click="actionsStore.pushWaitForResearchSale()" class="text-[10px] font-black text-purple-600 uppercase tracking-widest hover:text-purple-800 transition-colors bg-purple-100/50 px-3 py-2 rounded-lg">
+            Wait for Sale
+        </button>
+    </div>
+
+    <!-- ROI Alert (Only if sale is starting soon) -->
+    <div v-if="showROIAlert" class="px-5 py-4 bg-amber-50 rounded-2xl border border-amber-100 flex items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div class="w-10 h-10 rounded-xl bg-white border border-amber-200 shadow-sm flex items-center justify-center p-2 text-amber-500 scale-110">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+        </div>
+        <div>
+            <p class="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none mb-1.5">Efficiency Alert</p>
+            <p class="text-[11px] font-bold text-amber-900 leading-relaxed">A research sale starts in <span class="text-amber-600">{{ timeUntilNextSale !== null ? formatDuration(timeUntilNextSale) : '' }}</span>. Purchasing now might be inefficient.</p>
+        </div>
+    </div>
+
     <!-- Game View (Grouped by Tier) -->
     <ResearchGameView
       v-if="currentView === 'game'"
@@ -53,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   getDiscountedVirtuePrice,
   getCommonResearches,
@@ -69,6 +98,8 @@ import { generateActionId } from '@/types';
 import { useActionExecutor } from '@/composables/useActionExecutor';
 import { useResearchViews, VIEWS } from '@/composables/useResearchViews';
 import { getTimeToSave } from '@/engine/apply';
+import { iconURL } from 'lib';
+import { getEventInfo } from '@/lib/time';
 
 // Sub-components
 import ResearchSaleToggle from './ResearchSaleToggle.vue';
@@ -85,13 +116,24 @@ const { prepareExecution, completeExecution, batch } = useActionExecutor();
 const smartBuyState = ref({ threshold: 0, alwaysOn: false });
 let isSmartBuying = false;
 
-import { computed } from 'vue';
-import { getEventInfo } from '@/lib/time';
-
 const isInsideResearchEventWindow = computed(() => {
   const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime || Math.floor(Date.now() / 1000);
   const info = getEventInfo(currentSimTime);
   return info.isResearchSaleActive;
+});
+
+const timeUntilNextSale = computed(() => {
+    const currentSimTime = actionsStore.effectiveSnapshot.lastStepTime;
+    const info = getEventInfo(currentSimTime);
+    if (info.isResearchSaleActive) return null;
+    return info.nextResearchSaleStartTime - currentSimTime;
+});
+
+const showROIAlert = computed(() => {
+    if (isResearchSaleActive.value) return false;
+    if (timeUntilNextSale.value === null) return false;
+    // Show alert if sale is within 24 hours
+    return timeUntilNextSale.value < 24 * 3600;
 });
 
 const {

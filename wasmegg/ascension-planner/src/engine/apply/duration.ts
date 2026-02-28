@@ -124,6 +124,12 @@ export function refreshActionPayload(
         return { ...action, payload };
     }
 
+    if (action.type === 'wait_for_research_sale') {
+        const payload = { ...action.payload as any };
+        payload.totalTimeSeconds = Math.max(0, payload.targetTime - prevSnapshot.lastStepTime);
+        return { ...action, payload };
+    }
+
     return action;
 }
 
@@ -141,7 +147,8 @@ export function getActionDuration(
     if (
         action.type === 'wait_for_missions' ||
         action.type === 'wait_for_time' ||
-        action.type === 'wait_for_full_habs'
+        action.type === 'wait_for_full_habs' ||
+        action.type === 'wait_for_research_sale'
     ) {
         return (action.payload as { totalTimeSeconds?: number }).totalTimeSeconds || 0;
     }

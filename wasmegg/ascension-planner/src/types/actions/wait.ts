@@ -29,3 +29,11 @@ export interface WaitForFullHabsPayload {
     currentPopulation: number;
     totalTimeSeconds: number;
 }
+
+/**
+ * Payload for waiting for the next research sale (Friday 9:00 AM PT).
+ */
+export interface WaitForResearchSalePayload {
+    targetTime: number;
+    totalTimeSeconds: number;
+}

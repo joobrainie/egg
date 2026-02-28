@@ -35,25 +35,20 @@ export function getPacificOffsetSeconds(date: Date): number {
 }
 
 export function getEventInfo(currentTimeSeconds: number) {
-    // Current time in UTC Date
-    const date = new Date(currentTimeSeconds * 1000);
-
-    // Loop ahead hour by hour until we hit Monday 9AM PT and Friday 9AM PT
-    // Not the most efficient but very robust for DST transitions
     const OneHour = 3600;
+    const OneDay = 24 * OneHour;
 
-    // We can just align to the start of the current hour
-    let ts = currentTimeSeconds - (currentTimeSeconds % OneHour);
-
-    let nextEarningsBoost = -1;
-    let nextResearchSale = -1;
+    // Check if we are currently in an event window.
+    // If we are, we also want to know when it ends.
     let inEarningsBoost = false;
+    let earningsBoostEndTime = -1;
     let inResearchSale = false;
+    let researchSaleEndTime = -1;
 
-    // Check if we are currently in an event window
-    // Event is 24 hours long, so we check conditions at the exact hour
+    // We check from 24h ago until now
     for (let offset = -24; offset <= 0; offset++) {
-        const testDate = new Date((ts + offset * OneHour) * 1000);
+        const testTS = currentTimeSeconds + (offset * OneHour);
+        const testDate = new Date(testTS * 1000);
         const ptOffset = getPacificOffsetSeconds(testDate);
         const ptDate = new Date(testDate.getTime() + ptOffset * 1000);
 
@@ -61,27 +56,32 @@ export function getEventInfo(currentTimeSeconds: number) {
         const hour = ptDate.getUTCHours();
 
         if (day === DAY_MONDAY && hour === EVENT_START_HOUR_PT) {
-            // Started within the last 24 hours
-            // meaning it's currently active!
-            const actStart = (ts + offset * OneHour);
+            const actStart = testTS - (testTS % OneHour);
             const actDuration = currentTimeSeconds - actStart;
-            if (actDuration >= 0 && actDuration < 24 * OneHour) {
+            if (actDuration >= 0 && actDuration < OneDay) {
                 inEarningsBoost = true;
+                earningsBoostEndTime = actStart + OneDay;
             }
         }
 
         if (day === DAY_FRIDAY && hour === EVENT_START_HOUR_PT) {
-            const actStart = (ts + offset * OneHour);
+            const actStart = testTS - (testTS % OneHour);
             const actDuration = currentTimeSeconds - actStart;
-            if (actDuration >= 0 && actDuration < 24 * OneHour) {
+            if (actDuration >= 0 && actDuration < OneDay) {
                 inResearchSale = true;
+                researchSaleEndTime = actStart + OneDay;
             }
         }
     }
 
     // Find the NEXT events
+    let nextEarningsBoost = -1;
+    let nextResearchSale = -1;
+    const startOfHour = currentTimeSeconds - (currentTimeSeconds % OneHour);
+
     for (let offset = 0; offset <= 24 * 7 + 24; offset++) {
-        const testDate = new Date((ts + offset * OneHour) * 1000);
+        const testTS = startOfHour + (offset * OneHour);
+        const testDate = new Date(testTS * 1000);
         const ptOffset = getPacificOffsetSeconds(testDate);
         const ptDate = new Date(testDate.getTime() + ptOffset * 1000);
 
@@ -89,16 +89,14 @@ export function getEventInfo(currentTimeSeconds: number) {
         const hour = ptDate.getUTCHours();
 
         if (day === DAY_MONDAY && hour === EVENT_START_HOUR_PT && nextEarningsBoost === -1) {
-            const actStart = (ts + offset * OneHour);
-            if (actStart > currentTimeSeconds) {
-                nextEarningsBoost = actStart;
+            if (testTS > currentTimeSeconds) {
+                nextEarningsBoost = testTS;
             }
         }
 
         if (day === DAY_FRIDAY && hour === EVENT_START_HOUR_PT && nextResearchSale === -1) {
-            const actStart = (ts + offset * OneHour);
-            if (actStart > currentTimeSeconds) {
-                nextResearchSale = actStart;
+            if (testTS > currentTimeSeconds) {
+                nextResearchSale = testTS;
             }
         }
 
@@ -110,24 +108,30 @@ export function getEventInfo(currentTimeSeconds: number) {
     return {
         isEarningsBoostActive: inEarningsBoost,
         isResearchSaleActive: inResearchSale,
-        nextEarningsBoostStartTime: nextEarningsBoost, // in simulation seconds
-        nextEarningsBoostEndTime: nextEarningsBoost + 24 * 3600,
+        currentEarningsBoostEndTime: earningsBoostEndTime,
+        currentResearchSaleEndTime: researchSaleEndTime,
+        nextEarningsBoostStartTime: nextEarningsBoost,
         nextResearchSaleStartTime: nextResearchSale,
-        nextResearchSaleEndTime: nextResearchSale + 24 * 3600,
     };
 }
 
 export function getNextEventBoundary(currentTimeSeconds: number): number {
-    // Find the next threshold (start or end of any event)
     const info = getEventInfo(currentTimeSeconds);
+    const boundaries: number[] = [];
 
-    const boundaries = [];
     if (info.isEarningsBoostActive) {
-        // Find when it ends
-        // Since it starts Mon 9AM, it ends exact 24h later
-        // wait, we didn't calculate current event end time nicely if it's active.
-        // If active, it ends when the next Tue 9AM PT hits.
+        boundaries.push(info.currentEarningsBoostEndTime);
+    } else if (info.nextEarningsBoostStartTime !== -1) {
+        boundaries.push(info.nextEarningsBoostStartTime);
     }
-    return -1;
+
+    if (info.isResearchSaleActive) {
+        boundaries.push(info.currentResearchSaleEndTime);
+    } else if (info.nextResearchSaleStartTime !== -1) {
+        boundaries.push(info.nextResearchSaleStartTime);
+    }
+
+    if (boundaries.length === 0) return -1;
+    return Math.min(...boundaries.filter(b => b > currentTimeSeconds));
 }
 

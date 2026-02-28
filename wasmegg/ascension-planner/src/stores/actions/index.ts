@@ -18,6 +18,7 @@ import {
     VIRTUE_EGGS,
 } from '@/types';
 import { computeDeltas } from '@/lib/actions/snapshot';
+import { getEventInfo } from '@/lib/time';
 import { useInitialStateStore } from '@/stores/initialState';
 import { useVirtueStore } from '@/stores/virtue';
 import { useFuelTankStore } from '@/stores/fuelTank';
@@ -348,6 +349,7 @@ export const useActionsStore = defineStore('actions', {
                         cost: 0,
                         dependsOn: [],
                         payload: { active: true, multiplier: event.multiplier, eventId: event.id },
+                        isSystem: true,
                     });
                 }
                 const saleMap: Record<string, any> = {
@@ -364,8 +366,23 @@ export const useActionsStore = defineStore('actions', {
                         cost: 0,
                         dependsOn: [],
                         payload: { saleType: s.type, active: true, multiplier: event.multiplier },
+                        isSystem: true,
                     });
                 }
+            }
+        },
+
+        pushWaitForResearchSale() {
+            const nextSale = getEventInfo(this.effectiveSnapshot.lastStepTime).nextResearchSaleStartTime;
+            if (nextSale !== -1) {
+                this.pushAction({
+                    id: generateActionId(),
+                    type: 'wait_for_research_sale',
+                    timestamp: Date.now(),
+                    cost: 0,
+                    dependsOn: [],
+                    payload: { targetTime: nextSale, totalTimeSeconds: nextSale - this.effectiveSnapshot.lastStepTime },
+                });
             }
         },
 
@@ -436,12 +453,13 @@ export const useActionsStore = defineStore('actions', {
             try {
                 const context = getSimulationContext();
                 let baseState = startIndex === 0 ? createBaseEngineState(this._initialSnapshot) : this.actions[startIndex - 1].endState;
-                const actionsToSimulate = this.actions.slice(startIndex);
+                const actionsToSimulate = this.actions.slice(startIndex).filter(a => !a.isSystem);
                 this.recalculationProgress = { current: 0, total: actionsToSimulate.length };
                 const newActionsSegment = await simulateAsync(actionsToSimulate, context, baseState, (current, total) => {
                     this.recalculationProgress = { current, total };
                 }, startIndex);
-                this.actions.splice(startIndex, newActionsSegment.length, ...newActionsSegment);
+                const originalLength = this.actions.length - startIndex;
+                this.actions.splice(startIndex, originalLength, ...newActionsSegment);
                 this.relinkDependencies();
                 syncStoresToSnapshot(this.effectiveSnapshot);
             } finally {

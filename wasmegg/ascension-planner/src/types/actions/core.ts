@@ -82,6 +82,7 @@ export type ActionType =
     | 'wait_for_missions'
     | 'wait_for_time'
     | 'wait_for_full_habs'
+    | 'wait_for_research_sale'
     | 'toggle_earnings_boost'
     | 'notification';
 
@@ -107,6 +108,7 @@ export interface ActionPayloadMap {
     wait_for_missions: WaitForMissionsPayload;
     wait_for_time: WaitForTimePayload;
     wait_for_full_habs: WaitForFullHabsPayload;
+    wait_for_research_sale: import('./wait').WaitForResearchSalePayload;
     toggle_earnings_boost: ToggleEarningsBoostPayload;
     notification: NotificationPayload;
 }

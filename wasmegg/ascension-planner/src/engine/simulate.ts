@@ -4,7 +4,7 @@ import type { EngineState, SimulationContext, SimulationResult } from './types';
 import { applyAction, computePassiveEggsDelivered, applyPassiveEggs, applyTime, getActionDuration, refreshActionPayload } from './apply';
 import { computeSnapshot } from './compute';
 import { computeDeltas } from '@/lib/actions/snapshot';
-import { getEventInfo } from '@/lib/time';
+import { getEventInfo, getNextEventBoundary } from '@/lib/time';
 
 /**
  * Simulate a list of actions to produce a timeline of states.
@@ -43,6 +43,46 @@ export function simulate(
 
         // 0. Refresh dynamic payloads (e.g. wait_for_te duration based on new ELR)
         action = refreshActionPayload(action, currentSnapshot, context);
+        const actionDuration = getActionDuration(action, currentSnapshot);
+
+        // --- Splitting Logic ---
+        const nextBoundary = getNextEventBoundary(currentSnapshot.lastStepTime);
+        if (nextBoundary !== -1) {
+            const timeToBoundary = nextBoundary - currentSnapshot.lastStepTime;
+            // Only split if the action takes significantly more time than we have until the boundary (avoid jitter)
+            if (actionDuration > timeToBoundary + 0.1) {
+                const info = getEventInfo(currentSnapshot.lastStepTime);
+                const nextInf = getEventInfo(nextBoundary + 0.5); // Check just across the boundary
+
+                const earningsBoostChanged = info.isEarningsBoostActive !== nextInf.isEarningsBoostActive;
+                const researchSaleChanged = info.isResearchSaleActive !== nextInf.isResearchSaleActive;
+
+                let shouldSplit = false;
+                if (earningsBoostChanged) shouldSplit = true; // Earnings boost affects everything
+                if (researchSaleChanged && action.type === 'buy_research') shouldSplit = true; // Research sale only splits research
+
+                if (shouldSplit) {
+                    // Create wait until boundary
+                    const waitUntil = {
+                        id: generateActionId(),
+                        type: 'wait_for_time',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: action.dependsOn,
+                        payload: { totalTimeSeconds: timeToBoundary },
+                        isSystem: true
+                    } as unknown as Action;
+
+                    // Reduce the actual duration of the original action if it was a fixed-time action
+                    if (action.type === 'wait_for_time' || action.type === 'wait_for_full_habs' || action.type === 'wait_for_missions') {
+                        (action.payload as any).totalTimeSeconds = Math.max(0, (action.payload as any).totalTimeSeconds - timeToBoundary);
+                    }
+
+                    pendingActions.unshift(waitUntil, action);
+                    continue;
+                }
+            }
+        }
 
         // 1. Apply action to get new pure state
         currentState = applyAction(currentState, action);
@@ -106,7 +146,8 @@ export function simulate(
                         dependsOn: [action.id],
                         dependents: [],
                         payload: { active: true, multiplier: 2, eventId: 'system-injected' },
-                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
                     } as unknown as Action);
                 }
             }
@@ -123,7 +164,83 @@ export function simulate(
                         dependsOn: [action.id],
                         dependents: [],
                         payload: { saleType: 'research', active: true, multiplier: 0.3 },
-                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            }
+        } else {
+            // For any other action (like wait or shift), check if we crossed INTO or OUT of an event window
+            const info = getEventInfo(newSnapshot.lastStepTime);
+
+            // Check Earnings Boost Thresholds
+            if (info.isEarningsBoostActive && !newSnapshot.earningsBoost.active) {
+                // Crossing INTO Earnings Boost
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_earnings_boost' && (pendingActions[0].payload as any).active === true;
+                if (!nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: true, multiplier: 2, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            } else if (!info.isEarningsBoostActive && newSnapshot.earningsBoost.active) {
+                // Crossing OUT of Earnings Boost
+                const justInjectedOn = action.type === 'toggle_earnings_boost' && (action.payload as any).active === true;
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_earnings_boost' && (pendingActions[0].payload as any).active === false;
+                if (!justInjectedOn && !nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: false, multiplier: 1, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            }
+
+            // Check Research Sale Thresholds
+            if (info.isResearchSaleActive && !newSnapshot.activeSales.research && currentState.currentEgg === 'curiosity') {
+                // Crossing INTO Research Sale
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_sale' && (pendingActions[0].payload as any).saleType === 'research' && (pendingActions[0].payload as any).active === true;
+                if (!nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: true, multiplier: 0.3 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            } else if (!info.isResearchSaleActive && newSnapshot.activeSales.research) {
+                // Crossing OUT of Research Sale
+                const justInjectedOn = action.type === 'toggle_sale' && (action.payload as any).saleType === 'research' && (action.payload as any).active === true;
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_sale' && (pendingActions[0].payload as any).saleType === 'research' && (pendingActions[0].payload as any).active === false;
+                if (!justInjectedOn && !nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: false, multiplier: 1 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
                     } as unknown as Action);
                 }
             }
@@ -170,6 +287,45 @@ export async function simulateAsync(
         let action = pendingActions.shift()!;
 
         action = refreshActionPayload(action, currentSnapshot, context);
+        const actionDuration = getActionDuration(action, currentSnapshot);
+
+        // --- Splitting Logic ---
+        const nextBoundary = getNextEventBoundary(currentSnapshot.lastStepTime);
+        if (nextBoundary !== -1) {
+            const timeToBoundary = nextBoundary - currentSnapshot.lastStepTime;
+            if (actionDuration > timeToBoundary + 0.1) {
+                const info = getEventInfo(currentSnapshot.lastStepTime);
+                const nextInf = getEventInfo(nextBoundary + 0.5);
+
+                const earningsBoostChanged = info.isEarningsBoostActive !== nextInf.isEarningsBoostActive;
+                const researchSaleChanged = info.isResearchSaleActive !== nextInf.isResearchSaleActive;
+
+                let shouldSplit = false;
+                if (earningsBoostChanged) shouldSplit = true;
+                if (researchSaleChanged && action.type === 'buy_research') shouldSplit = true;
+
+                if (shouldSplit) {
+                    const waitUntil = {
+                        id: generateActionId(),
+                        type: 'wait_for_time',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: action.dependsOn,
+                        payload: { totalTimeSeconds: timeToBoundary },
+                        isSystem: true
+                    } as unknown as Action;
+
+                    if (action.type === 'wait_for_time' || action.type === 'wait_for_full_habs' || action.type === 'wait_for_missions') {
+                        (action.payload as any).totalTimeSeconds = Math.max(0, (action.payload as any).totalTimeSeconds - timeToBoundary);
+                    }
+
+                    pendingActions.unshift(waitUntil, action);
+                    iterationCount++;
+                    continue;
+                }
+            }
+        }
+
         currentState = applyAction(currentState, action);
         const durationSeconds = getActionDuration(action, currentSnapshot);
         const passiveEggs = computePassiveEggsDelivered(action, currentSnapshot);
@@ -214,7 +370,8 @@ export async function simulateAsync(
                         dependsOn: [action.id],
                         dependents: [],
                         payload: { active: true, multiplier: 2, eventId: 'system-injected' },
-                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
                     } as unknown as Action);
                 }
             }
@@ -229,7 +386,83 @@ export async function simulateAsync(
                         dependsOn: [action.id],
                         dependents: [],
                         payload: { saleType: 'research', active: true, multiplier: 0.3 },
-                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            }
+        } else {
+            // For any other action (like wait or shift), check if we crossed INTO or OUT of an event window
+            const info = getEventInfo(newSnapshot.lastStepTime);
+
+            // Check Earnings Boost Thresholds
+            if (info.isEarningsBoostActive && !newSnapshot.earningsBoost.active) {
+                // Crossing INTO Earnings Boost
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_earnings_boost' && (pendingActions[0].payload as any).active === true;
+                if (!nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: true, multiplier: 2, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            } else if (!info.isEarningsBoostActive && newSnapshot.earningsBoost.active) {
+                // Crossing OUT of Earnings Boost
+                const justInjectedOn = action.type === 'toggle_earnings_boost' && (action.payload as any).active === true;
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_earnings_boost' && (pendingActions[0].payload as any).active === false;
+                if (!justInjectedOn && !nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_earnings_boost',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { active: false, multiplier: 1, eventId: 'system-injected' },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            }
+
+            // Check Research Sale Thresholds
+            if (info.isResearchSaleActive && !newSnapshot.activeSales.research && currentState.currentEgg === 'curiosity') {
+                // Crossing INTO Research Sale
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_sale' && (pendingActions[0].payload as any).saleType === 'research' && (pendingActions[0].payload as any).active === true;
+                if (!nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: true, multiplier: 0.3 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
+                    } as unknown as Action);
+                }
+            } else if (!info.isResearchSaleActive && newSnapshot.activeSales.research) {
+                // Crossing OUT of Research Sale
+                const justInjectedOn = action.type === 'toggle_sale' && (action.payload as any).saleType === 'research' && (action.payload as any).active === true;
+                const nextExisting = pendingActions.length > 0 && pendingActions[0].type === 'toggle_sale' && (pendingActions[0].payload as any).saleType === 'research' && (pendingActions[0].payload as any).active === false;
+                if (!justInjectedOn && !nextExisting) {
+                    pendingActions.unshift({
+                        id: generateActionId(),
+                        type: 'toggle_sale',
+                        timestamp: Date.now(),
+                        cost: 0,
+                        dependsOn: [action.id],
+                        dependents: [],
+                        payload: { saleType: 'research', active: false, multiplier: 1 },
+                        index: 0, totalTimeSeconds: 0, endState: currentSnapshot,
+                        isSystem: true,
                     } as unknown as Action);
                 }
             }
