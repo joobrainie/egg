@@ -1,20 +1,14 @@
 <template>
   <div class="space-y-4">
-    <ResearchSaleStatus 
-      :is-research-sale-active="isResearchSaleActive" 
-      :next-event-info="nextEventInfo"
-    />
+    <ResearchSaleStatus :is-research-sale-active="isResearchSaleActive" :next-event-info="nextEventInfo" />
 
-    <SmartBuy 
+    <SmartBuy
       v-model:always-on="smartBuyState.alwaysOn"
-      @buy="handleSmartBuy" 
-      @update="state => smartBuyState = state" 
+      @buy="handleSmartBuy"
+      @update="state => (smartBuyState = state)"
     />
 
-    <ResearchViewSelector 
-      v-model="currentView" 
-      :views="VIEWS" 
-    />
+    <ResearchViewSelector v-model="currentView" :views="VIEWS" />
 
     <p class="text-sm text-gray-500 mb-4 px-1">
       {{ viewDescription }}
@@ -142,21 +136,29 @@ function buyOneLevel(research: CommonResearch): boolean {
   };
 
   // Compute dependencies (level N depends on the action that bought level N-1)
-  const dependencies = computeDependencies('buy_research', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels);
+  const dependencies = computeDependencies(
+    'buy_research',
+    payload,
+    actionsStore.actionsBeforeInsertion,
+    actionsStore.initialSnapshot.researchLevels
+  );
 
   // Apply to store
   commonResearchStore.setResearchLevel(research.id, effectiveLevel + 1);
 
   // Complete execution (computes snapshot, inserts/pushes action, replays if needed)
-  completeExecution({
-    id: generateActionId(),
-    timestamp: Date.now(),
-    type: 'buy_research',
-    payload,
-    cost,
-    dependsOn: dependencies,
-    startState: beforeSnapshot,
-  }, beforeSnapshot);
+  completeExecution(
+    {
+      id: generateActionId(),
+      timestamp: Date.now(),
+      type: 'buy_research',
+      payload,
+      cost,
+      dependsOn: dependencies,
+      startState: beforeSnapshot,
+    },
+    beforeSnapshot
+  );
 
   // Trigger automated sweep if Always On is enabled
   if (!isSmartBuying && smartBuyState.value.alwaysOn) {
@@ -167,11 +169,14 @@ function buyOneLevel(research: CommonResearch): boolean {
 }
 
 // Automatically sweep when Always On is toggled on
-watch(() => smartBuyState.value.alwaysOn, (newVal) => {
-  if (newVal && !isSmartBuying) {
-    handleSmartBuy(smartBuyState.value.threshold);
+watch(
+  () => smartBuyState.value.alwaysOn,
+  newVal => {
+    if (newVal && !isSmartBuying) {
+      handleSmartBuy(smartBuyState.value.threshold);
+    }
   }
-});
+);
 
 function handleBuyResearch(research: CommonResearch) {
   buyOneLevel(research);
@@ -183,12 +188,12 @@ function handleSmartBuy(threshold: number) {
 
   batch(() => {
     try {
-        let itemBought = true;
-        // Limit iterations to prevent infinite loops in edge cases
-        let iterations = 0;
-        const maxIterations = 2500;
+      let itemBought = true;
+      // Limit iterations to prevent infinite loops in edge cases
+      let iterations = 0;
+      const maxIterations = 2500;
 
-        while (itemBought && iterations < maxIterations) {
+      while (itemBought && iterations < maxIterations) {
         itemBought = false;
         iterations++;
 
@@ -203,18 +208,20 @@ function handleSmartBuy(threshold: number) {
 
         // Filter for unpurchased and unlocked
         // We only care about the very next level of each research
-        const candidates = all.filter(r => {
-        const level = levels[r.id] || 0;
-        return level < r.levels && isTierUnlocked(levels, r.tier);
-        }).map(r => {
-        const level = levels[r.id] || 0;
-        const price = getDiscountedVirtuePrice(r, level, mods, isSale);
-        return {
-            research: r,
-            price,
-            seconds: getTimeToSave(price, snapshot)
-        };
-        });
+        const candidates = all
+          .filter(r => {
+            const level = levels[r.id] || 0;
+            return level < r.levels && isTierUnlocked(levels, r.tier);
+          })
+          .map(r => {
+            const level = levels[r.id] || 0;
+            const price = getDiscountedVirtuePrice(r, level, mods, isSale);
+            return {
+              research: r,
+              price,
+              seconds: getTimeToSave(price, snapshot),
+            };
+          });
 
         // Sort by price (Cheapest First order)
         candidates.sort((a, b) => a.price - b.price);
@@ -222,13 +229,13 @@ function handleSmartBuy(threshold: number) {
         // Find the first one below threshold
         const found = candidates.find(c => c.seconds <= threshold);
         if (found) {
-            if (buyOneLevel(found.research)) {
-                itemBought = true;
-            }
+          if (buyOneLevel(found.research)) {
+            itemBought = true;
+          }
         }
-        }
+      }
     } finally {
-        isSmartBuying = false;
+      isSmartBuying = false;
     }
   });
 }
@@ -237,7 +244,7 @@ function handleMaxResearch(research: CommonResearch) {
   batch(() => {
     const maxLevel = research.levels;
     while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
-        if (!buyOneLevel(research)) break;
+      if (!buyOneLevel(research)) break;
     }
   });
 }
@@ -246,10 +253,10 @@ function handleMaxTier(tier: number) {
   batch(() => {
     const researches = researchByTier.value.get(tier) || [];
     for (const research of researches) {
-        const maxLevel = research.levels;
-        while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
+      const maxLevel = research.levels;
+      while ((commonResearchStore.researchLevels[research.id] || 0) < maxLevel) {
         if (!buyOneLevel(research)) break;
-        }
+      }
     }
   });
 }
@@ -260,8 +267,8 @@ function handleBuyToHere(index: number) {
     if (index < 0 || index >= list.length) return;
 
     for (let i = 0; i <= index; i++) {
-        const item = list[i];
-        buyOneLevel(item.research);
+      const item = list[i];
+      buyOneLevel(item.research);
     }
   });
 }

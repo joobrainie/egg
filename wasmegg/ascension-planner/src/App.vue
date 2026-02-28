@@ -27,12 +27,16 @@
         </p>
 
         <!-- Active Event Slide Toggle (Earnings Boost) -->
-        <div class="w-full max-w-sm bg-gradient-to-r from-orange-50/80 via-white to-amber-50/80 rounded-2xl p-4 border border-orange-100/50 shadow-sm relative overflow-hidden flex items-center justify-between transition-all duration-300">
+        <div
+          class="w-full max-w-sm bg-gradient-to-r from-orange-50/80 via-white to-amber-50/80 rounded-2xl p-4 border border-orange-100/50 shadow-sm relative overflow-hidden flex items-center justify-between transition-all duration-300"
+        >
           <div class="flex items-center gap-2 relative z-10">
             <div class="flex flex-col gap-0.5 text-left">
               <div class="flex items-center gap-2">
                 <div class="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse"></div>
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Monday 2x Earnings Event</span>
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none"
+                  >Monday 2x Earnings Event</span
+                >
               </div>
               <span class="text-[11px] font-black text-orange-600 uppercase tracking-tighter">
                 {{ isEarningsBoostActive ? 'Active' : 'Inactive' }}
@@ -45,7 +49,7 @@
             class="relative inline-flex h-5 w-10 items-center rounded-full transition-all duration-300 focus:outline-none shadow-inner"
             :class="[
               isEarningsBoostActive ? 'bg-orange-500' : 'bg-slate-200',
-              isScheduledEarningsBoost ? 'opacity-50 cursor-not-allowed' : ''
+              isScheduledEarningsBoost ? 'opacity-50 cursor-not-allowed' : '',
             ]"
             :disabled="isScheduledEarningsBoost"
           >
@@ -55,20 +59,34 @@
             />
           </button>
         </div>
-        
+
         <!-- Earnings Boost Status Row (Moved from ResearchSaleStatus) -->
-        <div class="w-full max-w-sm mt-1 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2 border border-orange-100/30 flex items-center justify-between transition-all hover:bg-white/80">
+        <div
+          class="w-full max-w-sm mt-1 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2 border border-orange-100/30 flex items-center justify-between transition-all hover:bg-white/80"
+        >
           <div class="flex items-center gap-3">
-            <div :class="['w-1.5 h-1.5 rounded-full', isEarningsBoostActive ? 'bg-amber-400 animate-pulse' : 'bg-slate-300']"></div>
+            <div
+              :class="[
+                'w-1.5 h-1.5 rounded-full',
+                isEarningsBoostActive ? 'bg-amber-400 animate-pulse' : 'bg-slate-300',
+              ]"
+            ></div>
             <div class="flex flex-col">
-              <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Global Schedule</span>
-              <span :class="['text-[10px] font-bold uppercase tracking-tight', isEarningsBoostActive ? 'text-amber-600' : 'text-slate-500']">
+              <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5"
+                >Global Schedule</span
+              >
+              <span
+                :class="[
+                  'text-[10px] font-bold uppercase tracking-tight',
+                  isEarningsBoostActive ? 'text-amber-600' : 'text-slate-500',
+                ]"
+              >
                 {{ isEarningsBoostActive ? '2x Boost Active' : 'Scheduled Monday' }}
               </span>
             </div>
           </div>
-          <div 
-            v-if="isEarningsBoostActive" 
+          <div
+            v-if="isEarningsBoostActive"
             class="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest shadow-sm"
           >
             LIVE
@@ -77,12 +95,9 @@
             {{ formatDate(nextBoostStart) }}
           </div>
         </div>
-
       </div>
 
-      <div v-if="loading" class="text-center py-4 text-gray-600">
-        Loading player data...
-      </div>
+      <div v-if="loading" class="text-center py-4 text-gray-600">Loading player data...</div>
 
       <div v-if="error" class="text-center py-4 text-red-600">
         {{ error }}
@@ -100,11 +115,7 @@
             <ChevronIcon :expanded="expandedSections.actionHistory" />
           </div>
           <div v-if="expandedSections.actionHistory" class="border-t border-gray-200 p-4 bg-gray-50 rounded-b-lg">
-            <ActionHistory
-              @show-details="showActionDetails"
-              @undo="showUndoConfirmation"
-              @clear-all="handleClearAll"
-            />
+            <ActionHistory @show-details="showActionDetails" @undo="showUndoConfirmation" @clear-all="handleClearAll" />
           </div>
         </div>
 
@@ -125,11 +136,7 @@
     </div>
 
     <!-- Action Details Modal -->
-    <ActionDetailsModal
-      v-if="showDetailsModal"
-      :action="detailsModalAction"
-      @close="closeActionDetails"
-    />
+    <ActionDetailsModal v-if="showDetailsModal" :action="detailsModalAction" @close="closeActionDetails" />
 
     <!-- Undo Confirmation Dialog -->
     <UndoConfirmationDialog
@@ -160,7 +167,6 @@
 
     <PlanFinalSummary @show-details="showCurrentDetails" @update:collapsed="isFooterCollapsed = $event" />
     <FloatingStats @show-details="showCurrentDetails" />
-
   </div>
 </template>
 
@@ -223,7 +229,9 @@ const eventsStore = useEventsStore();
 const salesStore = useSalesStore();
 const { prepareExecution, completeExecution } = useActionExecutor();
 
-const isScheduledEarningsBoost = computed(() => isEarningsEventActiveAt(actionsStore.effectiveSnapshot.lastStepTime * 1000));
+const isScheduledEarningsBoost = computed(() =>
+  isEarningsEventActiveAt(actionsStore.effectiveSnapshot.lastStepTime * 1000)
+);
 
 const isEarningsBoostActive = computed(() => actionsStore.effectiveSnapshot.earningsBoost.active);
 
@@ -232,24 +240,28 @@ const pageTitle = computed(() => {
   return name ? `Ascension Planner ${name}` : 'Ascension Planner';
 });
 
-watch(pageTitle, (newTitle) => {
-  document.title = newTitle;
-}, { immediate: true });
+watch(
+  pageTitle,
+  newTitle => {
+    document.title = newTitle;
+  },
+  { immediate: true }
+);
 
 const nextBoostStart = computed(() => {
-    const nowMs = actionsStore.effectiveSnapshot.lastStepTime * 1000;
-    const [start] = getEarningsEventWindow(nowMs);
-    return start;
+  const nowMs = actionsStore.effectiveSnapshot.lastStepTime * 1000;
+  const [start] = getEarningsEventWindow(nowMs);
+  return start;
 });
 
 function formatDate(timestampMs: number): string {
-    const date = new Date(timestampMs);
-    return date.toLocaleDateString('en-US', { 
-        weekday: 'short', 
-        hour: 'numeric', 
-        minute: '2-digit',
-        timeZone: virtueStore.ascensionTimezone 
-    });
+  const date = new Date(timestampMs);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: virtueStore.ascensionTimezone,
+  });
 }
 
 function handleToggleEarningsEvent() {
@@ -257,14 +269,14 @@ function handleToggleEarningsEvent() {
 
   const beforeSnapshot = prepareExecution();
   const currentlyActive = beforeSnapshot.earningsBoost.active;
-  
+
   // Find the multiplier from the event store if turning ON
   let multiplier = 2;
   if (!currentlyActive) {
-      const event = eventsStore.getActiveEvents(initialStateStore.isUltra).find(e => e.type === 'earnings-boost');
-      if (event) multiplier = event.multiplier;
+    const event = eventsStore.getActiveEvents(initialStateStore.isUltra).find(e => e.type === 'earnings-boost');
+    if (event) multiplier = event.multiplier;
   } else {
-      multiplier = 1;
+    multiplier = 1;
   }
 
   const payload = {
@@ -275,15 +287,23 @@ function handleToggleEarningsEvent() {
   // Update store state
   salesStore.setEarningsBoost(payload.active, payload.multiplier);
 
-  completeExecution({
-    id: generateActionId(),
-    timestamp: Date.now(),
-    type: 'toggle_earnings_boost',
-    payload,
-    cost: 0,
-    dependsOn: computeDependencies('toggle_earnings_boost', payload, actionsStore.actionsBeforeInsertion, actionsStore.initialSnapshot.researchLevels),
-    startState: beforeSnapshot,
-  }, beforeSnapshot);
+  completeExecution(
+    {
+      id: generateActionId(),
+      timestamp: Date.now(),
+      type: 'toggle_earnings_boost',
+      payload,
+      cost: 0,
+      dependsOn: computeDependencies(
+        'toggle_earnings_boost',
+        payload,
+        actionsStore.actionsBeforeInsertion,
+        actionsStore.initialSnapshot.researchLevels
+      ),
+      startState: beforeSnapshot,
+    },
+    beforeSnapshot
+  );
 }
 
 onMounted(() => {
@@ -358,14 +378,10 @@ function cancelUndo() {
 function executeUndo(mode: 'dependents' | 'truncate' = 'dependents') {
   if (!undoAction.value) return;
 
-  actionsStore.executeUndo(
-    undoAction.value.id,
-    mode,
-    (snapshot) => {
-      // Restore stores to the snapshot of the last remaining action
-      restoreFromSnapshot(snapshot);
-    }
-  );
+  actionsStore.executeUndo(undoAction.value.id, mode, snapshot => {
+    // Restore stores to the snapshot of the last remaining action
+    restoreFromSnapshot(snapshot);
+  });
 
   cancelUndo();
 }
@@ -383,9 +399,7 @@ function executeClearAll() {
   showClearAllConfirmation.value = false;
 }
 
-const playerId = ref(
-  new URLSearchParams(window.location.search).get('playerId') || getSavedPlayerID() || ''
-);
+const playerId = ref(new URLSearchParams(window.location.search).get('playerId') || getSavedPlayerID() || '');
 const loading = ref(false);
 const error = ref('');
 
@@ -404,7 +418,8 @@ async function submitPlayerId(id: string) {
     console.log('Player data (backup):', backup);
 
     // Store the backup data in initial state
-    let { initialShiftCount, initialTE, tankLevel, virtueFuelAmounts, eggsDelivered, teEarnedPerEgg } = initialStateStore.loadFromBackup(id, backup);
+    let { initialShiftCount, initialTE, tankLevel, virtueFuelAmounts, eggsDelivered, teEarnedPerEgg } =
+      initialStateStore.loadFromBackup(id, backup);
 
     // Calculate extra eggs since backup if on a virtue egg
     if (initialStateStore.currentFarmState && initialStateStore.lastBackupTime > 0) {
@@ -428,14 +443,14 @@ async function submitPlayerId(id: string) {
         const startPop = farm.population;
         const extraChickens = (snapshot.offlineIHR / 60) * elapsed;
         const endPop = Math.min(snapshot.habCapacity, startPop + extraChickens);
-        
+
         // Update population
         farm.population = endPop;
 
         // Recompute snapshot at end population to get accurate end-of-period ELR
         tempState.population = endPop;
         const endSnapshot = computeSnapshot(tempState, context);
-        
+
         // Average ELR for catch-up (accurate linear approximation)
         const avgELR = (snapshot.elr + endSnapshot.elr) / 2;
         const extraEggs = avgELR * elapsed;
@@ -443,11 +458,11 @@ async function submitPlayerId(id: string) {
         if (extraEggs > 0) {
           // 1. Update farm state
           farm.deliveredEggs += extraEggs;
-          
+
           // 2. Update store's initial delivered eggs
           const newDelivered = (eggsDelivered[egg] || 0) + extraEggs;
           initialStateStore.setInitialEggsDelivered(egg, newDelivered);
-          
+
           // 3. Update local eggsDelivered for later store initialization
           eggsDelivered[egg] = newDelivered;
 
@@ -493,23 +508,23 @@ async function submitPlayerId(id: string) {
 
 async function quickContinueAscension() {
   if (!playerId.value) return;
-  
+
   error.value = '';
   loading.value = true;
-  
+
   try {
     // 1. Wipe current plan
     await actionsStore.clearAll();
-    
+
     // 2. Reset date/time/TZ to current
     virtueStore.resetToCurrentDateTime();
-    
+
     // 3. Refresh backup (submitPlayerId)
     await submitPlayerId(playerId.value);
-    
+
     // 4. Trigger continue from backup
     await actionsStore.continueFromBackup(true);
-    
+
     loading.value = false;
   } catch (e) {
     loading.value = false;

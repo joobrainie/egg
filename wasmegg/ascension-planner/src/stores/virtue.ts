@@ -54,11 +54,11 @@ export interface VirtueState {
   initialTE: number;
 
   // Ascension start time
-  ascensionDate: string;   // YYYY-MM-DD format
-  ascensionTime: string;   // HH:MM format
+  ascensionDate: string; // YYYY-MM-DD format
+  ascensionTime: string; // HH:MM format
   ascensionTimezone: string; // IANA timezone identifier
-  bankValue: number;       // Current gems in bank
-  population: number;      // Current chickens on farm
+  bankValue: number; // Current gems in bank
+  population: number; // Current chickens on farm
 }
 
 export const useVirtueStore = defineStore('virtue', {
@@ -96,7 +96,7 @@ export const useVirtueStore = defineStore('virtue', {
         // We use a small trick: format the UTC date in the target timezone and find the GMT offset.
         const parts = new Intl.DateTimeFormat('en-US', {
           timeZone: this.ascensionTimezone,
-          timeZoneName: 'longOffset'
+          timeZoneName: 'longOffset',
         }).formatToParts(wallClockUtc);
 
         const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value || '';

@@ -3,9 +3,9 @@
  */
 
 export interface BuyResearchPayload {
-    researchId: string;
-    fromLevel: number;
-    toLevel: number;
+  researchId: string;
+  fromLevel: number;
+  toLevel: number;
 }
 
 /**
@@ -17,18 +17,18 @@ export type SaleType = 'research' | 'hab' | 'vehicle';
  * Payload for toggling a sale on or off.
  */
 export interface ToggleSalePayload {
-    saleType: SaleType;
-    active: boolean;
-    multiplier: number;
-    systemManaged?: boolean;
+  saleType: SaleType;
+  active: boolean;
+  multiplier: number;
+  systemManaged?: boolean;
 }
 
 /**
  * Payload for toggling earnings boost.
  */
 export interface ToggleEarningsBoostPayload {
-    active: boolean;
-    multiplier: number;
-    eventId?: string;
-    systemManaged?: boolean;
+  active: boolean;
+  multiplier: number;
+  eventId?: string;
+  systemManaged?: boolean;
 }
