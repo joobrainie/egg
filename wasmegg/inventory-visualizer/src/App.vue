@@ -14,7 +14,7 @@
     <p class="max-w-lg mx-auto text-center text-base">Maybe try refreshing the page.</p>
   </div>
 
-  <div v-else class="max-w-5xl w-full px-4 pb-6 xl:px-0 mx-auto">
+  <div v-else class="w-full px-4 pb-6">
     <the-player-id-form :player-id="playerId" @submit="submitPlayerId" />
 
     <base-error-boundary v-if="playerId" :key="`${playerId}:${refreshId}`">
