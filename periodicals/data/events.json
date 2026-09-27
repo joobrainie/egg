@@ -28953,6 +28953,15 @@
     "ultra": false
   },
   {
+    "endTimestamp": 1790524800,
+    "id": "ultra-9-26",
+    "message": "2x GIFTS!",
+    "multiplier": 2,
+    "startTimestamp": 1790438400,
+    "type": "gift-boost",
+    "ultra": true
+  },
+  {
     "endTimestamp": 1790611200,
     "id": "event-9-26-2",
     "message": "4x PIGGY GROWTH!",
@@ -28962,12 +28971,12 @@
     "ultra": false
   },
   {
-    "endTimestamp": 1790524800,
-    "id": "ultra-9-26",
-    "message": "2x GIFTS!",
-    "multiplier": 2,
-    "startTimestamp": 1790438400,
-    "type": "gift-boost",
-    "ultra": true
+    "endTimestamp": 1790611200,
+    "id": "event-9-27",
+    "message": "35% OFF EPIC RESEARCH!!",
+    "multiplier": 0.65,
+    "startTimestamp": 1790524800,
+    "type": "epic-research-sale",
+    "ultra": false
   }
 ]
