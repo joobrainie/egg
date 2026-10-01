@@ -218,13 +218,7 @@ export function runC3(
         if (!helpers.buyResearch(id, tl)) return false;
         return helpers.getActions()[helpers.getActions().length - 1].cost;
       },
-      {
-        getAbsTime: helpers.getAbsTime,
-        previewPurchase: helpers.previewPurchase,
-        advanceTime: helpers.advanceTime,
-        getElapsedSeconds: helpers.getElapsedSeconds,
-        getState: helpers.getState,
-      },
+      helpers.deferralHost,
       context,
       timeLimit,
       id => (helpers.getState().researchLevels[id] || 0) >= (targetLevels[id] || 0)
@@ -418,7 +412,8 @@ export function runC3(
               MULTI_LAYERING_LEVEL_1,
               Infinity,
               level1TimeLimit,
-              roiDeadline
+              roiDeadline,
+              true
             )
           );
         }
@@ -432,7 +427,8 @@ export function runC3(
             MULTI_LAYERING_TARGET_LEVEL,
             Infinity,
             timeLimit,
-            roiDeadline
+            roiDeadline,
+            true
           )
         );
       }
