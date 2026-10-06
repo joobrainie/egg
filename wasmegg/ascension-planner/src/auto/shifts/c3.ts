@@ -548,7 +548,7 @@ export function runC3Variants(
   const attachEggsLaid = (result: ShiftResult) => {
     const eggsLaid = calculateEggsLaidDuringActions(result.actions, startState, context);
     if (result.actions.length > 0) {
-      (result.actions[0].payload as any).eggsLaid = eggsLaid;
+      Object.assign(result.actions[0].payload, { eggsLaid });
     }
   };
 

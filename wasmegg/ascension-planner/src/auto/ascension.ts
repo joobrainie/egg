@@ -137,7 +137,7 @@ function runC1K1I1Segment(
     // them — the UI only looks for the field, not a specific action type, so any first action
     // works as the attachment point.
     if (result.actions.length > 0) {
-      (result.actions[0].payload as any).eggsLaid = eggsLaid;
+      Object.assign(result.actions[0].payload, { eggsLaid });
     }
     actions.push(...result.actions);
     currentState = result.endState;
@@ -221,7 +221,7 @@ export function runUntilShift(
     // them — the UI only looks for the field, not a specific action type, so any first action
     // works as the attachment point.
     if (result.actions.length > 0) {
-      (result.actions[0].payload as any).eggsLaid = eggsLaid;
+      Object.assign(result.actions[0].payload, { eggsLaid });
     }
 
     currentActions.push(...result.actions);
@@ -461,7 +461,7 @@ export function runAscension(
     // them — the UI only looks for the field, not a specific action type, so any first action
     // works as the attachment point.
     if (result.actions.length > 0) {
-      (result.actions[0].payload as any).eggsLaid = eggsLaid;
+      Object.assign(result.actions[0].payload, { eggsLaid });
     }
 
     ascShiftTimings.push({ name: shift.name, ms: performance.now() - t0 });

@@ -157,11 +157,13 @@ function run(items: Item[], deferForEarningsMode: boolean) {
     const out: Record<string, number> = {};
     for (const a of toy.actions) {
       t += a.totalTimeSeconds;
-      if ((a.type as string) === 'buy_research') out[(a.payload as any).researchId] = t;
+      if (a.type === 'buy_research') out[a.payload.researchId] = t;
     }
     return out;
   })();
-  const credit = toy.actions.filter(a => (a.type as string) === 'modify_bank').reduce((s, a) => s + (a.payload as any).delta, 0);
+  const credit = toy.actions
+    .filter((a): a is Action<'modify_bank'> => a.type === 'modify_bank')
+    .reduce((s, a) => s + a.payload.delta, 0);
   return { toy, result, purchases, purchaseTimes, credit };
 }
 

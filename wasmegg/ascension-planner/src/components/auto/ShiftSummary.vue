@@ -128,6 +128,7 @@ import { getResearchById, getResearchByTier } from '@/calculations/commonResearc
 import { getVehicleType } from '@/lib/vehicles';
 import { getHabById, type HabId } from '../../lib/habs';
 import { getArtifact, getStone } from '@/lib/artifacts/data';
+import type { RarityCode, StoneOption } from '@/lib/artifacts/types';
 import type { VirtueEgg } from '@/types';
 
 const props = defineProps<{
@@ -205,7 +206,13 @@ const summaryItems = computed(() => {
   const finalVehicles: Record<number, { id: number; trainLength?: number }> = {};
   const finalHabs: Record<number, number> = {};
   let finalSiloCount = 0;
-  const equippedArtifacts: any[] = [];
+  const equippedArtifacts: {
+    name: string;
+    tier: number;
+    rarity: RarityCode;
+    iconPath: string;
+    stones: { name: string; tier: number; iconPath: string }[];
+  }[] = [];
   const equippedSets: string[] = [];
 
   // Shared by change_artifacts/update_artifact_set/equip_artifact_set below — each one replaces
@@ -218,13 +225,13 @@ const summaryItems = computed(() => {
         if (artifact) {
           const stones = (slot.stones || [])
             .map((s: string | null) => (s ? getStone(s) : null))
-            .filter((s: any) => s !== null);
+            .filter((s): s is StoneOption => s !== null);
           equippedArtifacts.push({
             name: artifact.familyName,
             tier: artifact.tier,
             rarity: artifact.rarityCode,
             iconPath: artifact.iconPath,
-            stones: stones.map((s: any) => ({ name: s.familyName, tier: s.tier, iconPath: s.iconPath })),
+            stones: stones.map(s => ({ name: s.familyName, tier: s.tier, iconPath: s.iconPath })),
           });
         }
       }
@@ -326,7 +333,7 @@ if (!(researchId in startResearch)) startResearch[researchId] = fromLevel;
       category: 'loadout',
       isLoadout: true,
       setNames: equippedSets,
-      artifacts: equippedArtifacts.map((art: any) => ({
+      artifacts: equippedArtifacts.map(art => ({
         iconPath: art.iconPath,
         tier: art.tier,
         rarity: art.rarity,

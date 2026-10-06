@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { modifiersFromColleggtibleTiers } from 'lib/collegtibles';
 import type { EngineState, SimulationContext } from '../../types';
+import type { Action } from '@/types/actions/meta';
 import { advanceTimeWithBoundaries } from './advanceTime';
 import { getNextEarningsBoostStart, getNextSaleStart, isResearchSaleActive } from '@/lib/events';
 
@@ -70,14 +71,14 @@ describe('advanceTimeWithBoundaries defer for earnings mode', () => {
     const state = fakeState({ siloCount: 60, lastStepTime: 0 });
     const context = fakeContext({ ascensionStartTime: start, deferForEarningsMode: true });
 
-    const actions: any[] = [];
+    const actions: Action[] = [];
     advanceTimeWithBoundaries(state, actions, 0, context, start, boostStart - start + 3600);
 
     const boostOnIdx = actions.findIndex(a => a.type === 'toggle_earnings_boost' && a.payload.active === true);
     const waitsBeforeBoost = actions.slice(0, boostOnIdx).filter(a => a.type.startsWith('wait_for_'));
     expect(waitsBeforeBoost.length).toBeGreaterThan(1);
-    const credit = actions[boostOnIdx - 1];
-    expect(credit.type).toBe('modify_bank');
+    expect(actions[boostOnIdx - 1].type).toBe('modify_bank');
+    const credit = actions[boostOnIdx - 1] as Action<'modify_bank'>;
     const rate = actions[0].bankDelta / actions[0].totalTimeSeconds;
     expect(credit.payload.delta / rate).toBeCloseTo(50 * 3600, 0);
   });
