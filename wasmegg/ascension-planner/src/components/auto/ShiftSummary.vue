@@ -130,11 +130,12 @@ import { getHabById, type HabId } from '../../lib/habs';
 import { getArtifact, getStone } from '@/lib/artifacts/data';
 import type { RarityCode, StoneOption } from '@/lib/artifacts/types';
 import type { VirtueEgg } from '@/types';
+import type { Action } from '@/types/actions/meta';
 
 const props = defineProps<{
   title: string;
   egg: VirtueEgg;
-  actions: any[];
+  actions: Action[];
   duration: number;
   cost: number;
   costType: 'SE' | 'Virtue';
@@ -176,7 +177,31 @@ const eggThemes: Record<VirtueEgg, { bg: string; text: string }> = {
 const eggTheme = computed(() => eggThemes[props.egg] || eggThemes.curiosity);
 
 // Order the summary pills appear in, regardless of shift type. Edit this to reorder them.
-const CATEGORY_ORDER = ['loadout', 'silos', 'habs', 'vehicles', 'peakELR', 'te', 'overtake', 'research'] as const;
+const CATEGORY_ORDER = ['loadout', 'silos', 'habs', 'vehicles', 'peakELR', 'te', 'research'] as const;
+type SummaryCategory = (typeof CATEGORY_ORDER)[number];
+
+// Pill variants; the template switches on isPremium/isLoadout/isPeakELR in that order.
+type SummaryItem = { category: SummaryCategory } & (
+  | { isPremium: true; text: string }
+  | {
+      isPremium?: false;
+      isLoadout: true;
+      setNames: string[];
+      artifacts: { iconPath: string; tier: number; rarity: RarityCode; name: string }[];
+      stones: { iconPath: string; tier: number; name: string; count: number }[];
+    }
+  | { isPremium?: false; isLoadout?: false; isPeakELR: true; text: string }
+  | { isPremium: false; isLoadout?: false; isPeakELR?: false; name: string; delta: string }
+);
+
+// eggsLaid/peakELR ride along on a shift's first action, whatever its type (see ascension.ts).
+function payloadEggsLaid(action: Action): number | undefined {
+  return 'eggsLaid' in action.payload ? action.payload.eggsLaid : undefined;
+}
+
+function payloadPeakELR(action: Action): number | undefined {
+  return 'peakELR' in action.payload ? action.payload.peakELR : undefined;
+}
 
 // Rarity background tint, matching ArtifactSelector.vue's color scheme.
 function rarityBg(rarityCode: string): string {
@@ -193,8 +218,11 @@ function rarityBg(rarityCode: string): string {
 }
 
 const totalEggsLaid = computed(() => {
-  const eggAction = props.actions.find(a => a.payload?.eggsLaid !== undefined);
-  return eggAction ? eggAction.payload.eggsLaid : 0;
+  for (const action of props.actions) {
+    const eggsLaid = payloadEggsLaid(action);
+    if (eggsLaid !== undefined) return eggsLaid;
+  }
+  return 0;
 });
 
 const summaryItems = computed(() => {
@@ -282,37 +310,24 @@ if (!(researchId in startResearch)) startResearch[researchId] = fromLevel;
     }
   }
 
-    const items: any[] = [];
+    const items: SummaryItem[] = [];
 
     // --- Peak ELR / K3 Wait ---
-    const peakELRAction = props.actions.find(a => a.payload?.peakELR !== undefined);
-    if (peakELRAction) {
+    const peakELR = props.actions.map(payloadPeakELR).find(v => v !== undefined);
+    if (peakELR !== undefined) {
       items.push({
         category: 'peakELR',
         isPeakELR: true,
-        text: `Peak Delivery Rate: ${formatNumber(peakELRAction.payload.peakELR * 3600, 3)}/hr`,
+        text: `Peak Delivery Rate: ${formatNumber(peakELR * 3600, 3)}/hr`,
       });
     }
     // --- TE Earned ---
-    const teWaitActions = props.actions.filter(a => a.type === 'wait_for_te' || a.payload?.isTEWait);
-    if (teWaitActions.length > 0) {
-      const totalTE = teWaitActions.reduce((sum, a) => sum + (a.payload.teGained || a.payload.teEarned || 0), 0);
-      if (totalTE > 0) {
-        items.push({
-          category: 'te',
-          isPremium: true,
-          text: `+${totalTE} Truth Eggs`,
-        });
-      }
-    }
-
-    // --- Overtake Info ---
-    const overtakeAction = props.actions.find(a => a.type === 'virtual_overtake_info');
-    if (overtakeAction) {
+    const totalTE = props.actions.reduce((sum, a) => sum + (a.type === 'wait_for_te' ? a.payload.teGained || 0 : 0), 0);
+    if (totalTE > 0) {
       items.push({
-        category: 'overtake',
-        isPeakELR: true,
-        text: `Overtakes 1-sale in ${overtakeAction.payload.daysToOvertake.toFixed(1)}d`,
+        category: 'te',
+        isPremium: true,
+        text: `+${totalTE} Truth Eggs`,
       });
     }
 

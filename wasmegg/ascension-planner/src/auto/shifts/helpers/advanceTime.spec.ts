@@ -54,14 +54,15 @@ describe('advanceTimeWithBoundaries defer for earnings mode', () => {
     const state = fakeState({ siloCount: 2, lastStepTime: 0 });
     const context = fakeContext({ ascensionStartTime: anchor, deferForEarningsMode: true });
 
-    const actions: any[] = [];
+    const actions: Action[] = [];
     advanceTimeWithBoundaries(state, actions, 0, context, anchor, totalSeconds);
 
     const boostOnIdx = actions.findIndex(a => a.type === 'toggle_earnings_boost' && a.payload.active === true);
     expect(boostOnIdx).toBeGreaterThan(0);
     expect(actions[boostOnIdx - 1].type).toBe('modify_bank');
-    expect(actions[boostOnIdx - 1].payload.delta).toBeGreaterThan(0);
-    expect(actions[boostOnIdx - 1].bankDelta).toBeGreaterThan(0);
+    const credit = actions[boostOnIdx - 1] as Action<'modify_bank'>;
+    expect(credit.payload.delta).toBeGreaterThan(0);
+    expect(credit.bankDelta).toBeGreaterThan(0);
   });
 
   test('credits the whole idle gap since the last purchase, not just the final wait step', () => {
@@ -87,7 +88,7 @@ describe('advanceTimeWithBoundaries defer for earnings mode', () => {
     const state = fakeState({ siloCount: 2, lastStepTime: 0 });
     const context = fakeContext({ ascensionStartTime: anchor, deferForEarningsMode: false });
 
-    const actions: any[] = [];
+    const actions: Action[] = [];
     advanceTimeWithBoundaries(state, actions, 0, context, anchor, totalSeconds);
 
     expect(actions.some(a => a.type === 'modify_bank')).toBe(false);
@@ -122,7 +123,7 @@ describe('advanceTimeWithBoundaries boundary-landing precision', () => {
     const state = fakeState({ lastStepTime: priorLastStepTime });
     const totalSeconds = saleStart - driftedBaseAbsTime;
 
-    const actions: any[] = [];
+    const actions: Action[] = [];
     const result = advanceTimeWithBoundaries(state, actions, 0, context, driftedBaseAbsTime, totalSeconds);
 
     const reconstructedAbsTime =

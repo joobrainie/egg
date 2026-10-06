@@ -158,7 +158,7 @@ export function advanceTimeWithBoundaries(
     }
 
     if (stepSeconds > 0) {
-      let actionType: any = 'wait_for_time';
+      let actionType: 'wait_for_time' | 'wait_for_research_sale' | 'wait_for_earnings_boost' = 'wait_for_time';
       if (targetEvent === 'research_sale') actionType = 'wait_for_research_sale';
       else if (targetEvent === 'earnings_boost') actionType = 'wait_for_earnings_boost';
 
