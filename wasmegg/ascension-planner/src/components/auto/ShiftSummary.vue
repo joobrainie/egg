@@ -63,12 +63,14 @@
       <div v-for="(item, index) in summaryItems" :key="index" class="flex items-center">
         <template v-if="'isTE' in item">
           <div
-            v-tippy="`+${item.gained} Truth Eggs this shift (${item.total} total)`"
+            v-tippy="`+${item.gained} Truth Eggs this shift (${item.total} total, ${item.eggTotal} ${egg})`"
             class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border bg-slate-50 border-slate-100 text-[8.5px] font-black tracking-tight text-slate-600"
           >
             <span>+{{ item.gained }}</span>
             <img :src="iconURL('egginc/egg_truth.png', 32)" class="w-3 h-3 object-contain" alt="Truth Egg" />
-            <span>({{ item.total }})</span>
+            <span>({{ item.total }} total | {{ item.eggTotal }}</span>
+            <img :src="iconURL(`egginc/egg_${egg}.png`, 32)" class="w-3 h-3 object-contain" :alt="egg" />
+            <span>)</span>
           </div>
         </template>
         <template v-else-if="item.isPremium">
@@ -194,7 +196,7 @@ type SummaryCategory = (typeof CATEGORY_ORDER)[number];
 
 // Pill variants; the template switches on isPremium/isLoadout/isPeakELR in that order.
 type SummaryItem = { category: SummaryCategory } & (
-  | { isTE: true; gained: number; total: number }
+  | { isTE: true; gained: number; total: number; eggTotal: number }
   | { isPremium: true; text: string }
   | {
       isPremium?: false;
@@ -340,12 +342,10 @@ if (!(researchId in startResearch)) startResearch[researchId] = fromLevel;
       // count if higher (claimed TE isn't always backed by the plan's eggsDelivered).
       const endState = props.actions[props.actions.length - 1]?.endState;
       const eggs = Object.keys(endState?.eggsDelivered ?? {}) as VirtueEgg[];
-      const total = eggs.reduce(
-        (sum, e) =>
-          sum + Math.max(countTEThresholdsPassed(endState.eggsDelivered[e] || 0), endState.teEarned?.[e] || 0),
-        0
-      );
-      items.push({ category: 'te', isTE: true, gained: totalTE, total });
+      const eggTE = (e: VirtueEgg) =>
+        Math.max(countTEThresholdsPassed(endState.eggsDelivered[e] || 0), endState.teEarned?.[e] || 0);
+      const total = eggs.reduce((sum, e) => sum + eggTE(e), 0);
+      items.push({ category: 'te', isTE: true, gained: totalTE, total, eggTotal: eggTE(props.egg) });
     }
 
   // --- Equipped Loadout (combines "Equipped X Set" with the artifact/stone icons) ---
